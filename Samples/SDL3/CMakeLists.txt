@@ -49,6 +49,7 @@ if(USE_OPENGL)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/LAppSpriteShader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/LAppSpriteShader.hpp
     )
+    find_package(OpenGL REQUIRED)
 endif()
 
 # Vulkan specific source files
@@ -99,12 +100,10 @@ target_link_libraries(${SDL3_SAMPLE_NAME} PRIVATE
     SDL3::SDL3-static
 )
 
-if(USE_VULKAN)
-    target_link_libraries(${SDL3_SAMPLE_NAME} PRIVATE Vulkan::Vulkan)
-    target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_VULKAN)
-else()
-    target_link_libraries(${SDL3_SAMPLE_NAME} PRIVATE ${OPENGL_LIBRARIES} GLEW::GLEW)
+if(USE_OPENGL)
     target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_OPENGL)
+elseif(USE_VULKAN)
+    target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_VULKAN)
 endif()
 
 # MSVC specific settings - use static runtime
@@ -120,19 +119,11 @@ endif()
 
 # Specify include directories.
 target_include_directories(${SDL3_SAMPLE_NAME} PRIVATE
+    ${STB_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${COMMON_SRC_PATH}
-    ${SDK_ROOT_PATH}/Framework/src
     ${CORE_PATH}/include
 )
-
-if(USE_OPENGL)
-    target_include_directories(${SDL3_SAMPLE_NAME} PRIVATE ${GLEW_INCLUDE_DIRS})
-endif()
-
-if(USE_VULKAN)
-    target_include_directories(${SDL3_SAMPLE_NAME} PRIVATE ${Vulkan_INCLUDE_DIRS})
-endif()
 
 # Build in multi-process.
 if(MSVC)
@@ -150,7 +141,7 @@ add_custom_command(
 # Copy shaders
 if(USE_OPENGL)
     set(SAMPLE_SHADER_PATH ${SDK_ROOT_PATH}/Samples/OpenGL/Shaders/Standard)
-    set(FRAMEWORK_SHADER_PATH ${SDK_ROOT_PATH}/Framework/src/Rendering/OpenGL/Shaders/Standard)
+    set(FRAMEWORK_SHADER_PATH ${FRAMEWORK_PATH}/src/Rendering/OpenGL/Shaders/Standard)
     add_custom_command(
       TARGET ${SDL3_SAMPLE_NAME}
       POST_BUILD

@@ -12,10 +12,15 @@ set(APP_VERSION 1.0.0)
 # Set directory paths.
 set(SDK_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 set(CORE_PATH ${SDK_ROOT_PATH}/Core)
-set(FRAMEWORK_PATH Framework)
+set(FRAMEWORK_PATH ${SDK_ROOT_PATH}/Framework)
+set(THIRD_PARTY_PATH ${SDK_ROOT_PATH}/Samples/OpenGL/thirdParty)
+set(STB_PATH ${THIRD_PARTY_PATH}/stb)
 
 # Set project.
 project(${APP_NAME} VERSION ${APP_VERSION})
+
+# 実行ファイルの出力先をビルドフォルダの直下の bin 以下にする
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Suppress generation of ZERO_CHECK project.
 set(CMAKE_SUPPRESS_REGENERATION ON)
@@ -94,21 +99,16 @@ elseif(UNIX)
   )
 endif()
 
-# Find packages from vcpkg
+# Framework Renderer Select
 if(USE_OPENGL)
-  find_package(OpenGL REQUIRED)
-  find_package(GLEW REQUIRED)
-endif()
-
-if(USE_VULKAN)
-  find_package(Vulkan REQUIRED)
-endif()
-
-# Specify Cubism Framework rendering.
-if(USE_VULKAN)
-  set(FRAMEWORK_SOURCE Vulkan)
-elseif(USE_OPENGL)
   set(FRAMEWORK_SOURCE OpenGL)
+  if(WIN32)
+    set(THIRD_PARTY_PATH ${SDK_ROOT_PATH}/Samples/OpenGL/thirdParty)
+    find_package(GLEW REQUIRED)
+  endif()
+elseif(USE_VULKAN)
+  set(FRAMEWORK_SOURCE Vulkan)
+  find_package(Vulkan REQUIRED)
 else()
   set(FRAMEWORK_SOURCE SDL3GPU)
 endif()
@@ -117,19 +117,21 @@ endif()
 add_subdirectory(${FRAMEWORK_PATH} ${CMAKE_CURRENT_BINARY_DIR}/Framework)
 
 # Add rendering definition to framework based on platform and backend
-if(USE_VULKAN)
-  target_include_directories(Framework PUBLIC ${Vulkan_INCLUDE_DIRS})
-  target_link_libraries(Framework PUBLIC Live2DCubismCore Vulkan::Vulkan)
-elseif(USE_OPENGL)
+if(USE_OPENGL)
   if(WIN32)
     target_compile_definitions(Framework PUBLIC CSM_TARGET_WIN_GL)
+    target_link_libraries(Framework PUBLIC Live2DCubismCore GLEW::GLEW)
   elseif(APPLE)
     target_compile_definitions(Framework PUBLIC CSM_TARGET_MAC_GL)
+    target_link_libraries(Framework PUBLIC Live2DCubismCore)
   elseif(UNIX)
     target_compile_definitions(Framework PUBLIC CSM_TARGET_LINUX_GL)
+    target_link_libraries(Framework PUBLIC Live2DCubismCore)
   endif()
-  target_include_directories(Framework PUBLIC ${GLEW_INCLUDE_DIRS})
-  target_link_libraries(Framework PUBLIC Live2DCubismCore GLEW::GLEW)
+elseif(USE_VULKAN)
+  target_include_directories(Framework PUBLIC ${Vulkan_INCLUDE_DIRS})
+  target_link_libraries(Framework PUBLIC Vulkan::Vulkan)
+else()
 endif()
 
 add_subdirectory(Samples/SDL3)
@@ -144,4 +146,3 @@ add_subdirectory(Samples/SDL3)
 #   Renderer draws to default main framebuffer.
 #
 # INFO: USE_RENDER_TARGET has higher priority than USE_MODEL_RENDER_TARGET.
-
