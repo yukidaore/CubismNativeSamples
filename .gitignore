@@ -5,6 +5,7 @@
 /Core/**/*.dylib
 /Core/**/*.lib
 /Core/**/*.so
+/Core/include
 #Core development files
 /.CoreDev/Archive/
 
