@@ -120,6 +120,37 @@ void LAppView::Render()
     _back->Render();
     _gear->Render();
     _power->Render();
+
+    LAppLive2DManager* Live2DManager = LAppLive2DManager::GetInstance();
+    Live2DManager->SetViewMatrix(_viewMatrix);
+
+    // Cubism更新・描画
+    Live2DManager->OnUpdate();
+
+    // 各モデルが持つ描画ターゲットをテクスチャとする場合
+    if (_renderTarget == SelectTarget_ModelFrameBuffer && _renderSprite)
+    {
+        const GLfloat uvVertex[] =
+        {
+            1.0f, 1.0f,
+            0.0f, 1.0f,
+            0.0f, 0.0f,
+            1.0f, 0.0f,
+        };
+
+        for (Csm::csmUint32 i = 0; i < Live2DManager->GetModelNum(); i++)
+        {
+            LAppModel* model = Live2DManager->GetModel(i);
+            float alpha = i < 1 ? 1.0f : model->GetOpacity();
+            _renderSprite->SetColor(1.0f * alpha, 1.0f * alpha, 1.0f * alpha, alpha);
+
+            if (model)
+            {
+                _renderSprite->SetWindowSize(maxWidth, maxHeight);
+                _renderSprite->RenderImmidiate(model->GetRenderBuffer().GetColorBuffer(), uvVertex);
+            }
+        }
+    }
 #elif defined(CSM_TARGET_VULKAN)
     LAppLive2DManager* live2DManager = LAppLive2DManager::GetInstance();
     if (!live2DManager)
@@ -181,39 +212,6 @@ void LAppView::Render()
     commandBuffer = vkManager->BeginSingleTimeCommands();
     ChangeEndLayout(commandBuffer);
     vkManager->SubmitCommand(commandBuffer);
-#elif defined(CSM_TARGET_OPENGL)
-    Live2DManager->SetViewMatrix(_viewMatrix);
-
-    // Cubism更新・描画
-    Live2DManager->OnUpdate();
-
-    // 各モデルが持つ描画ターゲットをテクスチャとする場合
-    if (_renderTarget == SelectTarget_ModelFrameBuffer && _renderSprite)
-    {
-        int maxWidth = LAppDelegate::GetInstance()->GetWindowWidth();
-        int maxHeight = LAppDelegate::GetInstance()->GetWindowHeight();
-        
-        const GLfloat uvVertex[] =
-        {
-            1.0f, 1.0f,
-            0.0f, 1.0f,
-            0.0f, 0.0f,
-            1.0f, 0.0f,
-        };
-
-        for (Csm::csmUint32 i = 0; i < Live2DManager->GetModelNum(); i++)
-        {
-            LAppModel* model = Live2DManager->GetModel(i);
-            float alpha = i < 1 ? 1.0f : model->GetOpacity();
-            _renderSprite->SetColor(1.0f * alpha, 1.0f * alpha, 1.0f * alpha, alpha);
-
-            if (model)
-            {
-                _renderSprite->SetWindowSize(maxWidth, maxHeight);
-                _renderSprite->RenderImmidiate(model->GetRenderBuffer().GetColorBuffer(), uvVertex);
-            }
-        }
-    }
 #endif
 }
 

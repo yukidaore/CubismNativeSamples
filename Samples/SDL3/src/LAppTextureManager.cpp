@@ -68,6 +68,7 @@ LAppTextureManager::TextureInfo* LAppTextureManager::CreateTextureFromPngFile(st
         return nullptr;
     }
 
+#ifdef PREMULTIPLIED_ALPHA_ENABLE
     // premultiply
     unsigned int* fourBytes = reinterpret_cast<unsigned int*>(png);
     for (int i = 0; i < width * height; i++)
@@ -75,6 +76,7 @@ LAppTextureManager::TextureInfo* LAppTextureManager::CreateTextureFromPngFile(st
         unsigned char* p = png + i * 4;
         fourBytes[i] = Premultiply(p[0], p[1], p[2], p[3]);
     }
+#endif
 
     GLuint textureId;
     glGenTextures(1, &textureId);

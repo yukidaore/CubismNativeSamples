@@ -56,6 +56,8 @@ GLuint LAppSpriteShader::CreateShader()
     // リンク
     glLinkProgram(programId);
 
+    glUseProgram(programId);
+
     // シェーダーオブジェクトの削除
     glDeleteShader(vertexShaderId);
     glDeleteShader(fragmentShaderId);
@@ -65,6 +67,7 @@ GLuint LAppSpriteShader::CreateShader()
     glGetProgramiv(programId, GL_LINK_STATUS, &status);
     if (status == GL_FALSE)
     {
+        LAppPal::PrintLogLn("glGetProgramiv failed");
         glDeleteProgram(programId);
         return 0;
     }

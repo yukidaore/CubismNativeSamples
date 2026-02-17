@@ -7,9 +7,6 @@ set(SDL3_SAMPLE_NAME SDL3Demo)
 set(RES_PATH ${SDK_ROOT_PATH}/Samples/Resources)
 set(COMMON_SRC_PATH ${SDK_ROOT_PATH}/Samples/Common)
 
-# Define output directory.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin/${SDL3_SAMPLE_NAME})
-
 # --------------------------------------------------------------------
 # SDL3
 # --------------------------------------------------------------------

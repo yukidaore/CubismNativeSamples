@@ -35,7 +35,7 @@ namespace LAppDefine {
     // 歯車画像ファイル
     const csmChar* GearImageName = "icon_gear.png";
     // 終了ボタン画像ファイル
-    const csmChar* PowerImageName = "CloseNormal.png";
+    const csmChar* PowerImageName = "close.png";
 
     // シェーダーパス
 #if defined(CSM_TARGET_VULKAN)

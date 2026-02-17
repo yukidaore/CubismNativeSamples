@@ -213,7 +213,7 @@ public:
     bool IsHit(int windowWidth, int windowHeight, float pointX, float pointY) const;
 #endif
 
-#if defined(CSM_TARGET_VULKAN)
+
     /**
      * @brief 色設定
      *
@@ -233,7 +233,7 @@ public:
      * @param[in]       height       高さ
      */
     void ResetRect(float x, float y, float width, float height);
-#endif
+
 
 #if defined(CSM_TARGET_OPENGL)
     /**

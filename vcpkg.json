@@ -2,7 +2,6 @@
   "name": "live2d",
   "version": "0.0.1",
   "dependencies": [
-    "minizip-ng",
     "glew",
     "stb",
     "vulkan"

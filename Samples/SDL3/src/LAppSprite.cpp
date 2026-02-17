@@ -87,6 +87,40 @@ void LAppSprite::Render() const
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
+void LAppSprite::RenderImmidiate(GLuint textureId, const GLfloat uvVertex[8]) const
+{
+    if (_maxWidth == 0 || _maxHeight == 0)
+    {
+        return; // この際は描画できず
+    }
+
+    // attribute属性を有効にする
+    glEnableVertexAttribArray(_positionLocation);
+    glEnableVertexAttribArray(_uvLocation);
+
+    // uniform属性の登録
+    glUniform1i(_textureLocation, 0);
+
+    // 頂点データ
+    float positionVertex[] =
+    {
+        (_rect.right - _maxWidth * 0.5f) / (_maxWidth * 0.5f), (_rect.up - _maxHeight * 0.5f) / (_maxHeight * 0.5f),
+        (_rect.left - _maxWidth * 0.5f) / (_maxWidth * 0.5f), (_rect.up - _maxHeight * 0.5f) / (_maxHeight * 0.5f),
+        (_rect.left - _maxWidth * 0.5f) / (_maxWidth * 0.5f), (_rect.down - _maxHeight * 0.5f) / (_maxHeight * 0.5f),
+        (_rect.right - _maxWidth * 0.5f) / (_maxWidth * 0.5f), (_rect.down - _maxHeight * 0.5f) / (_maxHeight * 0.5f)
+    };
+
+    // attribute属性を登録
+    glVertexAttribPointer(_positionLocation, 2, GL_FLOAT, false, 0, positionVertex);
+    glVertexAttribPointer(_uvLocation, 2, GL_FLOAT, false, 0, uvVertex);
+
+    glUniform4f(_colorLocation, _spriteColor[0], _spriteColor[1], _spriteColor[2], _spriteColor[3]);
+
+    // モデルの描画
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
 bool LAppSprite::IsHit(float pointX, float pointY) const
 {
     if (_maxWidth == 0 || _maxHeight == 0)
@@ -98,12 +132,6 @@ bool LAppSprite::IsHit(float pointX, float pointY) const
     float y = _maxHeight - pointY;
 
     return (pointX >= _rect.left && pointX <= _rect.right && y <= _rect.up && y >= _rect.down);
-}
-
-void LAppSprite::SetWindowSize(int width, int height)
-{
-    _maxWidth = width;
-    _maxHeight = height;
 }
 
 #elif defined(CSM_TARGET_VULKAN)

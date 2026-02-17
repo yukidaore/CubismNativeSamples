@@ -13,20 +13,18 @@ SDL3ベースの統合サンプルです。OpenGLとVulkanの両方のレンダ�
 
 ### OpenGLバックエンド (デフォルト)
 
+トップフォルダで実行してください
+
 ```bash
-cd Samples/SDL3
-mkdir build && cd build
-cmake ..
-cmake --build .
+make prebuild
+make build
 ```
 
 ### Vulkanバックエンド
 
 ```bash
-cd Samples/SDL3
-mkdir build && cd build
-cmake .. -DUSE_OPENGL=OFF -DUSE_VULKAN=ON
-cmake --build .
+CMAKEOPT="-DUSE_OPENGL=OFF -DUSE_VULKAN=ON" make prebuild
+make
 ```
 
 ## 設定オプション
