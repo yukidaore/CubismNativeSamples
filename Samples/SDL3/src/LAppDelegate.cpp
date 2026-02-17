@@ -17,10 +17,10 @@
 #include <Rendering/Vulkan/CubismRenderer_Vulkan.hpp>
 #endif
 
-#include "LAppLive2DManager.hpp"
 #include "LAppView.hpp"
 #include "LAppPal.hpp"
 #include "LAppDefine.hpp"
+#include "LAppLive2DManager.hpp"
 #include "LAppTextureManager.hpp"
 
 using namespace Csm;
@@ -154,21 +154,6 @@ bool LAppDelegate::Initialize()
 
     VulkanManager::Create(_window);
     s_vulkanManager = VulkanManager::GetInstance();
-#endif
-
-    // ウィンドウサイズ記憶
-    int width, height;
-    SDL_GetWindowSize(_window, &width, &height);
-    _windowWidth = width;
-    _windowHeight = height;
-
-#if defined(CSM_TARGET_VULKAN)
-    // setup cubism
-    _cubismOption.LogFunction = LAppPal::PrintMessage;
-    _cubismOption.LoggingLevel = LAppDefine::CubismLoggingLevel;
-    _cubismOption.LoadFileFunction = LAppPal::LoadFileAsBytes;
-    _cubismOption.ReleaseBytesFunction = LAppPal::ReleaseBytes;
-    Csm::CubismFramework::StartUp(&_cubismAllocator, &_cubismOption);
 
     // vulkanデバイスの作成
     s_vulkanManager->Initialize();
@@ -181,37 +166,25 @@ bool LAppDelegate::Initialize()
         s_vulkanManager->GetSwapchainImageView(), swapchainManager->GetSwapchainImageFormat(),
         s_vulkanManager->GetDepthFormat()
     );
-
-    _textureManager = new LAppTextureManager();
-
-    // AppViewの初期化
-    _view->Initialize(width, height);
-
-    // Cubism SDK の初期化
-    InitializeCubism();
-
-    LAppLive2DManager::GetInstance()->SetRenderTargetSize(width, height);
-#else
-    // Cubism SDK の初期化
-    InitializeCubism();
-
-    // AppViewの初期化
-    _view->Initialize(width, height);
 #endif
+
+    // ウィンドウサイズ記憶
+    int width, height;
+    SDL_GetWindowSize(_window, &width, &height);
+    _windowWidth = width;
+    _windowHeight = height;
+
+    // Cubism SDK の初期化
+    InitializeCubism();
+
+    // AppViewの初期化
+    _view->Initialize(width, height);
 
     return true;
 }
 
 void LAppDelegate::Release()
 {
-#if defined(CSM_TARGET_OPENGL)
-    SDL_GL_DestroyContext(_glContext);
-#endif
-
-    // Windowの削除
-    SDL_DestroyWindow(_window);
-    SDL_Quit();
-
     delete _textureManager;
     delete _view;
 
@@ -221,9 +194,15 @@ void LAppDelegate::Release()
     // Cubism SDK の解放
     CubismFramework::Dispose();
 
+#if defined(CSM_TARGET_OPENGL)
+    SDL_GL_DestroyContext(_glContext);
+#endif
 #if defined(CSM_TARGET_VULKAN)
     VulkanManager::Delete();
 #endif
+    // Windowの削除
+    SDL_DestroyWindow(_window);
+    SDL_Quit();
 }
 
 #if defined(CSM_TARGET_VULKAN)
@@ -268,35 +247,55 @@ bool LAppDelegate::RecreateSwapchain()
 void LAppDelegate::Run()
 {
     // メインループ
+    SDL_Event event;
+
     while (!_isEnd)
     {
         // イベント処理
-        ProcessEvents();
-
-        if (_isEnd)
+        while (SDL_PollEvent(&event))
         {
-            break;
-        }
-
-        // ウィンドウサイズ変更チェック
-        int width, height;
-        SDL_GetWindowSize(_window, &width, &height);
-        if ((_windowWidth != width || _windowHeight != height) && width > 0 && height > 0)
-        {
+            switch (event.type)
+            {
+            case SDL_EVENT_QUIT:
+                _isEnd = true;
+                break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                OnMouseEvent(event.button.button, event.type == SDL_EVENT_MOUSE_BUTTON_DOWN, 
+                           static_cast<float>(event.button.x), static_cast<float>(event.button.y));
+                break;
+            case SDL_EVENT_MOUSE_MOTION:
+                OnMouseMoved(static_cast<float>(event.motion.x), static_cast<float>(event.motion.y));
+                break;
+            case SDL_EVENT_WINDOW_RESIZED:
 #if defined(CSM_TARGET_OPENGL)
-            // AppViewの初期化
-            _view->Initialize(width, height);
-            // スプライトサイズを再設定
-            _view->ResizeSprite();
-            // オフスクリーンのサイズ変更
-            LAppLive2DManager::GetInstance()->SetRenderTargetSize(width, height);
-            // サイズを保存しておく
-            _windowWidth = width;
-            _windowHeight = height;
-
-            // ビューポート変更
-            glViewport(0, 0, width, height);
+                {
+                    int width = event.window.data1;
+                    int height = event.window.data2;
+                    if (width > 0 && height > 0)
+                    {
+                        // AppViewの初期化
+                        _view->Initialize(width, height);
+                        // スプライトサイズを再設定
+                        _view->ResizeSprite();
+                        // オフスクリーンのサイズ変更
+                        LAppLive2DManager::GetInstance()->SetRenderTargetSize(width, height);
+                        // サイズを保存しておく
+                        _windowWidth = width;
+                        _windowHeight = height;
+                        // ビューポート変更
+                        glViewport(0, 0, width, height);
+                    }
+                }
 #endif
+#if defined(CSM_TARGET_VULKAN)
+                if (s_vulkanManager)
+                {
+                    s_vulkanManager->SetFrameBufferResized(true);
+                }
+#endif
+                break;
+            }
         }
 
         // 時間更新
@@ -331,55 +330,61 @@ void LAppDelegate::Run()
     ReleaseInstance();
 }
 
-void LAppDelegate::ProcessEvents()
-{
-    SDL_Event event;
-    while (SDL_PollEvent(&event))
-    {
-        switch (event.type)
-        {
-        case SDL_EVENT_QUIT:
-            _isEnd = true;
-            break;
-
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            OnMouseButton(event.button.button, true);
-            break;
-
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-            OnMouseButton(event.button.button, false);
-            break;
-
-        case SDL_EVENT_MOUSE_MOTION:
-            OnMouseMoved(event.motion.x, event.motion.y);
-            break;
-
-        case SDL_EVENT_WINDOW_RESIZED:
-#if defined(CSM_TARGET_VULKAN)
-            if (s_vulkanManager)
-            {
-                s_vulkanManager->SetFrameBufferResized(true);
-            }
+LAppDelegate::LAppDelegate()
+    : _cubismOption()
+    , _window(NULL)
+    , _captured(false)
+    , _mouseX(0.0f)
+    , _mouseY(0.0f)
+    , _isEnd(false)
+    , _windowWidth(0)
+    , _windowHeight(0)
+#if defined(CSM_TARGET_OPENGL)
+    , _glContext(NULL)
 #endif
-            break;
-
-        default:
-            break;
-        }
-    }
+{
+    _view = new LAppView();
+    _textureManager = new LAppTextureManager();
 }
 
-void LAppDelegate::OnMouseButton(int button, bool pressed)
+LAppDelegate::~LAppDelegate()
+{
+}
+
+void LAppDelegate::InitializeCubism()
+{
+    // setup cubism
+    _cubismOption.LogFunction = LAppPal::PrintMessage;
+    _cubismOption.LoggingLevel = LAppDefine::CubismLoggingLevel;
+    _cubismOption.LoadFileFunction = LAppPal::LoadFileAsBytes;
+    _cubismOption.ReleaseBytesFunction = LAppPal::ReleaseBytes;
+    Csm::CubismFramework::StartUp(&_cubismAllocator, &_cubismOption);
+
+    // Initialize cubism
+    CubismFramework::Initialize();
+
+    // load model
+    LAppLive2DManager::GetInstance();
+
+    // default proj
+    CubismMatrix44 projection;
+
+    LAppPal::UpdateTime();
+}
+
+void LAppDelegate::OnMouseEvent(Uint8 button, bool pressed, float x, float y)
 {
     if (_view == NULL)
     {
         return;
     }
-
-    if (button != SDL_BUTTON_LEFT)
+    if (SDL_BUTTON_LEFT != button)
     {
         return;
     }
+
+    _mouseX = x;
+    _mouseY = y;
 
     if (pressed)
     {
@@ -405,62 +410,12 @@ void LAppDelegate::OnMouseMoved(float x, float y)
     {
         return;
     }
-
     if (_view == NULL)
     {
         return;
     }
 
     _view->OnTouchesMoved(_mouseX, _mouseY);
-}
-
-LAppDelegate::LAppDelegate()
-    : _cubismOption()
-    , _window(NULL)
-    , _captured(false)
-    , _mouseX(0.0f)
-    , _mouseY(0.0f)
-    , _isEnd(false)
-    , _windowWidth(0)
-    , _windowHeight(0)
-#if defined(CSM_TARGET_OPENGL)
-    , _glContext(NULL)
-#endif
-{
-    _view = new LAppView();
-    _textureManager = new LAppTextureManager();
-}
-
-LAppDelegate::~LAppDelegate()
-{
-}
-
-void LAppDelegate::InitializeCubism()
-{
-#if defined(CSM_TARGET_OPENGL)
-    // setup cubism
-    _cubismOption.LogFunction = LAppPal::PrintMessage;
-    _cubismOption.LoggingLevel = LAppDefine::CubismLoggingLevel;
-    _cubismOption.LoadFileFunction = LAppPal::LoadFileAsBytes;
-    _cubismOption.ReleaseBytesFunction = LAppPal::ReleaseBytes;
-    Csm::CubismFramework::StartUp(&_cubismAllocator, &_cubismOption);
-#endif
-
-    // Initialize cubism
-    CubismFramework::Initialize();
-
-    // load model
-    LAppLive2DManager::GetInstance();
-
-#if defined(CSM_TARGET_VULKAN)
-    // アイコン
-    _view->InitializeSprite();
-#endif
-
-    // default proj
-    CubismMatrix44 projection;
-
-    LAppPal::UpdateTime();
 }
 
 #if defined(CSM_TARGET_VULKAN)

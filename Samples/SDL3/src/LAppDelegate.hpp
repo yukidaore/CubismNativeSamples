@@ -52,6 +52,25 @@ public:
     */
     void Run();
 
+    /**
+    * @brief   マウスボタンイベント処理。
+    *
+    * @param[in]       button            ボタン種類
+    * @param[in]       state             ボタン状態
+    * @param[in]       x                 x座標
+    * @param[in]       y                 y座標
+    */
+    void OnMouseEvent(Uint8 button, bool pressed, float x, float y);
+
+    /**
+    * @brief   マウス移動イベント処理。
+    *
+    * @param[in]       x                 x座標
+    * @param[in]       y                 y座標
+    */
+    void OnMouseMoved(float x, float y);
+
+
 #if defined(CSM_TARGET_VULKAN)
     /**
     * @brief スワップチェーンの再作成
@@ -108,11 +127,6 @@ public:
     */
     int GetWindowHeight() { return _windowHeight; }
 
-    /**
-    * @brief イベントを処理する
-    */
-    void ProcessEvents();
-
 private:
     /**
     * @brief コンストラクタ
@@ -128,16 +142,6 @@ private:
     * @brief Cubism SDK の初期化
     */
     void InitializeCubism();
-
-    /**
-    * @brief マウスボタンのコールバック処理
-    */
-    void OnMouseButton(int button, bool pressed);
-
-    /**
-    * @brief マウス移動のコールバック処理
-    */
-    void OnMouseMoved(float x, float y);
 
     LAppAllocator_Common _cubismAllocator;       ///< Cubism SDK Allocator
     Csm::CubismFramework::Option _cubismOption;  ///< Cubism SDK Option

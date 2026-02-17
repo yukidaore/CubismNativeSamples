@@ -70,7 +70,7 @@ LAppModel::~LAppModel()
         const csmChar* group = _modelSetting->GetMotionGroupName(i);
         ReleaseMotionGroup(group);
     }
-    delete _modelSetting;
+    delete(_modelSetting);
 }
 
 #if defined(CSM_TARGET_OPENGL)
@@ -120,7 +120,7 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
     csmByte* buffer;
     csmSizeInt size;
 
-    // Cubism Model
+    //Cubism Model
     if (strcmp(_modelSetting->GetModelFileName(), "") != 0)
     {
         csmString path = _modelSetting->GetModelFileName();
@@ -136,7 +136,7 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         DeleteBuffer(buffer, path.GetRawString());
     }
 
-    // Expression
+    //Expression
     if (_modelSetting->GetExpressionCount() > 0)
     {
         const csmInt32 count = _modelSetting->GetExpressionCount();
@@ -163,7 +163,7 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         }
     }
 
-    // Physics
+    //Physics
     if (strcmp(_modelSetting->GetPhysicsFileName(), "") != 0)
     {
         csmString path = _modelSetting->GetPhysicsFileName();
@@ -174,7 +174,7 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         DeleteBuffer(buffer, path.GetRawString());
     }
 
-    // Pose
+    //Pose
     if (strcmp(_modelSetting->GetPoseFileName(), "") != 0)
     {
         csmString path = _modelSetting->GetPoseFileName();
@@ -185,13 +185,13 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         DeleteBuffer(buffer, path.GetRawString());
     }
 
-    // EyeBlink
+    //EyeBlink
     if (_modelSetting->GetEyeBlinkParameterCount() > 0)
     {
         _eyeBlink = CubismEyeBlink::Create(_modelSetting);
     }
 
-    // Breath
+    //Breath
     {
         _breath = CubismBreath::Create();
 
@@ -206,7 +206,7 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         _breath->SetParameters(breathParameters);
     }
 
-    // UserData
+    //UserData
     if (strcmp(_modelSetting->GetUserDataFile(), "") != 0)
     {
         csmString path = _modelSetting->GetUserDataFile();
@@ -234,7 +234,13 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         }
     }
 
-    // Layout
+    if (_modelSetting == NULL || _modelMatrix == NULL)
+    {
+        LAppPal::PrintLogLn("Failed to SetupModel().");
+        return;
+    }
+
+    //Layout
     csmMap<csmString, csmFloat32> layout;
     _modelSetting->GetLayoutMap(layout);
     _modelMatrix->SetupFromLayout(layout);
@@ -259,7 +265,7 @@ void LAppModel::PreloadMotionGroup(const csmChar* group)
 
     for (csmInt32 i = 0; i < count; i++)
     {
-        // ex) idle_0
+        //ex) idle_0
         csmString name = Utils::CubismString::GetFormatedString("%s_%d", group, i);
         csmString path = _modelSetting->GetMotionFileName(group, i);
         path = _modelHomeDir + path;
@@ -276,17 +282,6 @@ void LAppModel::PreloadMotionGroup(const csmChar* group)
 
         if (tmpMotion)
         {
-            csmFloat32 fadeTime = _modelSetting->GetMotionFadeInTimeValue(group, i);
-            if (fadeTime >= 0.0f)
-            {
-                tmpMotion->SetFadeInTime(fadeTime);
-            }
-
-            fadeTime = _modelSetting->GetMotionFadeOutTimeValue(group, i);
-            if (fadeTime >= 0.0f)
-            {
-                tmpMotion->SetFadeOutTime(fadeTime);
-            }
             tmpMotion->SetEffectIds(_eyeBlinkIds, _lipSyncIds);
 
             if (_motions[name] != NULL)
@@ -314,6 +309,11 @@ void LAppModel::ReleaseMotionGroup(const csmChar* group) const
     }
 }
 
+/**
+* @brief すべてのモーションデータの解放
+*
+* すべてのモーションデータを解放する。
+*/
 void LAppModel::ReleaseMotions()
 {
     for (csmMap<csmString, ACubismMotion*>::const_iterator iter = _motions.Begin(); iter != _motions.End(); ++iter)
@@ -324,6 +324,11 @@ void LAppModel::ReleaseMotions()
     _motions.Clear();
 }
 
+/**
+* @brief すべての表情データの解放
+*
+* すべての表情データを解放する。
+*/
 void LAppModel::ReleaseExpressions()
 {
     for (csmMap<csmString, ACubismMotion*>::const_iterator iter = _expressions.Begin(); iter != _expressions.End(); ++iter)
@@ -343,57 +348,73 @@ void LAppModel::Update()
     _dragX = _dragManager->GetX();
     _dragY = _dragManager->GetY();
 
-    // 加算されていないかチェック
+    // モーションによるパラメータ更新の有無
     csmBool motionUpdated = false;
 
-    _model->LoadParameters();
+    //-----------------------------------------------------------------
+    _model->LoadParameters(); // 前回セーブされた状態をロード
     if (_motionManager->IsFinished())
     {
+        // モーションの再生がない場合、待機モーションの中からランダムで再生する
         StartRandomMotion(MotionGroupIdle, PriorityIdle);
     }
     else
     {
-        motionUpdated = _motionManager->UpdateMotion(_model, deltaTimeSeconds);
+        motionUpdated = _motionManager->UpdateMotion(_model, deltaTimeSeconds); // モーションを更新
     }
-    _model->SaveParameters();
+    _model->SaveParameters(); // 状態を保存
+    //-----------------------------------------------------------------
 
+    // 不透明度
+    _opacity = _model->GetModelOpacity();
+
+    // まばたき
     if (!motionUpdated)
     {
         if (_eyeBlink != NULL)
         {
-            _eyeBlink->UpdateParameters(_model, deltaTimeSeconds);
+            // メインモーションの更新がないとき
+            _eyeBlink->UpdateParameters(_model, deltaTimeSeconds); // 目パチ
         }
     }
 
     if (_expressionManager != NULL)
     {
-        _expressionManager->UpdateMotion(_model, deltaTimeSeconds);
+        _expressionManager->UpdateMotion(_model, deltaTimeSeconds); // 表情でパラメータ更新（相対変化）
     }
 
-    // ドラッグによる変化
-    _model->AddParameterValue(_idParamAngleX, _dragX * 30);
+    //ドラッグによる変化
+    //ドラッグによる顔の向きの調整
+    _model->AddParameterValue(_idParamAngleX, _dragX * 30); // -30から30の値を加える
     _model->AddParameterValue(_idParamAngleY, _dragY * 30);
     _model->AddParameterValue(_idParamAngleZ, _dragX * _dragY * -30);
 
-    _model->AddParameterValue(_idParamBodyAngleX, _dragX * 10);
+    //ドラッグによる体の向きの調整
+    _model->AddParameterValue(_idParamBodyAngleX, _dragX * 10); // -10から10の値を加える
 
-    _model->AddParameterValue(_idParamEyeBallX, _dragX);
+    //ドラッグによる目の向きの調整
+    _model->AddParameterValue(_idParamEyeBallX, _dragX); // -1から1の値を加える
     _model->AddParameterValue(_idParamEyeBallY, _dragY);
 
+    // 呼吸など
     if (_breath != NULL)
     {
         _breath->UpdateParameters(_model, deltaTimeSeconds);
     }
 
+    // 物理演算の設定
     if (_physics != NULL)
     {
         _physics->Evaluate(_model, deltaTimeSeconds);
     }
 
+    // リップシンクの設定
     if (_lipSync)
     {
+        // リアルタイムでリップシンクを行う場合、システムから音量を取得して0〜1の範囲で値を入力します。
         csmFloat32 value = 0.0f;
 
+        // 状態更新/RMS値取得
         _wavFileHandler.Update(deltaTimeSeconds);
         value = _wavFileHandler.GetRms();
 
@@ -403,12 +424,14 @@ void LAppModel::Update()
         }
     }
 
+    // ポーズの設定
     if (_pose != NULL)
     {
         _pose->UpdateParameters(_model, deltaTimeSeconds);
     }
 
     _model->Update();
+
 }
 
 CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt32 no, csmInt32 priority, ACubismMotion::FinishedMotionCallback onFinishedMotionHandler, ACubismMotion::BeganMotionCallback onBeganMotionHandler)
@@ -428,7 +451,7 @@ CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt
 
     const csmString fileName = _modelSetting->GetMotionFileName(group, no);
 
-    // ex) idle_0
+    //ex) idle_0
     csmString name = Utils::CubismString::GetFormatedString("%s_%d", group, no);
     CubismMotion* motion = static_cast<CubismMotion*>(_motions[name.GetRawString()]);
     csmBool autoDelete = false;
@@ -445,30 +468,27 @@ CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt
 
         if (motion)
         {
-            csmFloat32 fadeTime = _modelSetting->GetMotionFadeInTimeValue(group, no);
-            if (fadeTime >= 0.0f)
-            {
-                motion->SetFadeInTime(fadeTime);
-            }
-
-            fadeTime = _modelSetting->GetMotionFadeOutTimeValue(group, no);
-            if (fadeTime >= 0.0f)
-            {
-                motion->SetFadeOutTime(fadeTime);
-            }
             motion->SetEffectIds(_eyeBlinkIds, _lipSyncIds);
-            autoDelete = true;
+            autoDelete = true; // 終了時にメモリから削除
+        }
+        else
+        {
+            CubismLogError("Can't start motion %s .", path.GetRawString());
+            // ロードできなかったモーションのReservePriorityをリセットする
+            _motionManager->SetReservePriority(PriorityNone);
+            DeleteBuffer(buffer, path.GetRawString());
+            return InvalidMotionQueueEntryHandleValue;
         }
 
         DeleteBuffer(buffer, path.GetRawString());
     }
     else
     {
-        motion->SetFinishedMotionHandler(onFinishedMotionHandler);
         motion->SetBeganMotionHandler(onBeganMotionHandler);
+        motion->SetFinishedMotionHandler(onFinishedMotionHandler);
     }
 
-    // voice
+    //voice
     csmString voice = _modelSetting->GetMotionSoundFileName(group, no);
     if (strcmp(voice.GetRawString(), "") != 0)
     {
@@ -481,7 +501,7 @@ CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt
     {
         LAppPal::PrintLogLn("[APP]start motion: [%s_%d]", group, no);
     }
-    return _motionManager->StartMotion(motion, autoDelete, _userTimeSeconds);
+    return  _motionManager->StartMotionPriority(motion, autoDelete, priority);
 }
 
 CubismMotionQueueEntryHandle LAppModel::StartRandomMotion(const csmChar* group, csmInt32 priority, ACubismMotion::FinishedMotionCallback onFinishedMotionHandler, ACubismMotion::BeganMotionCallback onBeganMotionHandler)
@@ -498,51 +518,37 @@ CubismMotionQueueEntryHandle LAppModel::StartRandomMotion(const csmChar* group, 
 
 void LAppModel::DoDraw()
 {
-#if defined(CSM_TARGET_OPENGL)
     if (_model == NULL)
     {
         return;
     }
 
+#if defined(CSM_TARGET_OPENGL)
     GetRenderer<Rendering::CubismRenderer_OpenGLES2>()->DrawModel();
 #elif defined(CSM_TARGET_VULKAN)
-    if (_model == NULL)
-    {
-        return;
-    }
-
     GetRenderer<Rendering::CubismRenderer_Vulkan>()->DrawModel();
 #endif
 }
 
 void LAppModel::Draw(CubismMatrix44& matrix)
 {
+    if (_model == NULL)
+    {
+        return;
+    }
+
+    matrix.MultiplyByMatrix(_modelMatrix);
 #if defined(CSM_TARGET_OPENGL)
-    if (_model == NULL)
-    {
-        return;
-    }
-
-    matrix.MultiplyByMatrix(_modelMatrix);
-
     GetRenderer<Rendering::CubismRenderer_OpenGLES2>()->SetMvpMatrix(&matrix);
-
-    DoDraw();
 #elif defined(CSM_TARGET_VULKAN)
-    if (_model == NULL)
-    {
-        return;
-    }
-
-    matrix.MultiplyByMatrix(_modelMatrix);
-
     GetRenderer<Rendering::CubismRenderer_Vulkan>()->SetMvpMatrix(&matrix);
-    DoDraw();
 #endif
+    DoDraw();
 }
 
 csmBool LAppModel::HitTest(const csmChar* hitAreaName, csmFloat32 x, csmFloat32 y)
 {
+    // 透明時は当たり判定なし。
     if (_opacity < 1)
     {
         return false;
@@ -556,7 +562,7 @@ csmBool LAppModel::HitTest(const csmChar* hitAreaName, csmFloat32 x, csmFloat32 
             return IsHit(drawID, x, y);
         }
     }
-    return false;
+    return false; // 存在しない場合はfalse
 }
 
 void LAppModel::SetExpression(const csmChar* expressionID)
@@ -599,25 +605,18 @@ void LAppModel::SetRandomExpression()
     }
 }
 
-#if defined(CSM_TARGET_OPENGL)
 void LAppModel::ReloadRenderer()
 {
     DeleteRenderer();
 
     CreateRenderer(LAppDelegate::GetInstance()->GetWindowWidth(), LAppDelegate::GetInstance()->GetWindowHeight());
 
+#if defined(CSM_TARGET_OPENGL)
     SetupTextures();
-}
 #elif defined(CSM_TARGET_VULKAN)
-void LAppModel::ReloadRenderer(VkDevice device, VkFormat surfaceFormat)
-{
-    DeleteRenderer();
-
-    CreateRenderer(LAppDelegate::GetInstance()->GetWindowWidth(), LAppDelegate::GetInstance()->GetWindowHeight());
-
     SetupTextures(device, surfaceFormat);
-}
 #endif
+}
 
 #if defined(CSM_TARGET_OPENGL)
 void LAppModel::SetupTextures()
