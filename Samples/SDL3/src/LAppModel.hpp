@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -15,6 +15,8 @@
 #include <Rendering/OpenGL/CubismRenderTarget_OpenGLES2.hpp>
 #elif defined(CSM_TARGET_VULKAN)
 #include <Rendering/Vulkan/CubismRenderTarget_Vulkan.hpp>
+#elif defined(CSM_TARGET_GPU)
+#include <Rendering/SDL3_GPU/CubismRenderTarget_SDL3.hpp>
 #endif
 
 #include "LAppWavFileHandler_Common.hpp"
@@ -44,6 +46,8 @@ public:
     void LoadAssets(const Csm::csmChar* dir, const Csm::csmChar* fileName);
 #elif defined(CSM_TARGET_VULKAN)
     void LoadAssets(VkDevice device, VkFormat imageFormat, const Csm::csmChar* dir, const Csm::csmChar* fileName);
+#elif defined(CSM_TARGET_GPU)
+    void LoadAssets(SDL_GPUDevice* device, const Csm::csmChar* dir, const Csm::csmChar* fileName);
 #endif
 
     /**
@@ -53,6 +57,8 @@ public:
     void ReloadRenderer();
 #elif defined(CSM_TARGET_VULKAN)
     void ReloadRenderer(VkDevice device, VkFormat surfaceFormat);
+#elif defined(CSM_TARGET_GPU)
+    void ReloadRenderer(SDL_GPUDevice* device);
 #endif
 
     /**
@@ -132,6 +138,8 @@ public:
     Csm::Rendering::CubismRenderTarget_OpenGLES2& GetRenderBuffer();
 #elif defined(CSM_TARGET_VULKAN)
     Csm::Rendering::CubismRenderTarget_Vulkan& GetRenderBuffer();
+#elif defined(CSM_TARGET_GPU)
+    Csm::Rendering::CubismRenderTarget_SDL3& GetRenderBuffer();
 #endif
 
     /**
@@ -164,6 +172,8 @@ private:
     void SetupTextures();
 #elif defined(CSM_TARGET_VULKAN)
     void SetupTextures(VkDevice device, VkFormat surfaceFormat);
+#elif defined(CSM_TARGET_GPU)
+    void SetupTextures(SDL_GPUDevice* device);
 #endif
 
     /**
@@ -214,6 +224,9 @@ private:
     Csm::Rendering::CubismRenderTarget_OpenGLES2 _renderBuffer;  ///< フレームバッファ以外の描画先
 #elif defined(CSM_TARGET_VULKAN)
     Csm::Rendering::CubismRenderTarget_Vulkan _renderBuffer;     ///< フレームバッファ以外の描画先
+    Csm::csmVector<Csm::csmUint32> _bindTextureId;               ///< テクスチャID
+#elif defined(CSM_TARGET_GPU)
+    Csm::Rendering::CubismRenderTarget_SDL3 _renderBuffer;       ///< フレームバッファ以外の描画先
     Csm::csmVector<Csm::csmUint32> _bindTextureId;               ///< テクスチャID
 #endif
 };

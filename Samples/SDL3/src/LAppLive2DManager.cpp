@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -20,6 +20,9 @@
 #include <Rendering/OpenGL/CubismOffscreenManager_OpenGLES2.hpp>
 #elif defined(CSM_TARGET_VULKAN)
 #include <Rendering/Vulkan/CubismOffscreenManager_Vulkan.hpp>
+#elif defined(CSM_TARGET_GPU)
+#include <Rendering/SDL3_GPU/CubismOffscreenManager_SDL3.hpp>
+#include <Rendering/SDL3_GPU/CubismRenderer_SDL3.hpp>
 #endif
 
 #if defined(_WIN32)
@@ -93,6 +96,8 @@ LAppLive2DManager::~LAppLive2DManager()
     Csm::Rendering::CubismOffscreenManager_OpenGLES2::ReleaseInstance();
 #elif defined(CSM_TARGET_VULKAN)
     Csm::Rendering::CubismOffscreenManager_Vulkan::ReleaseInstance();
+#elif defined(CSM_TARGET_GPU)
+    Csm::Rendering::CubismOffscreenManager_SDL3::ReleaseInstance();
 #endif
 }
 
@@ -252,8 +257,24 @@ void LAppLive2DManager::OnTap(csmFloat32 x, csmFloat32 y)
 
 void LAppLive2DManager::OnUpdate() const
 {
-    int width = LAppDelegate::GetInstance()->GetWindowWidth();
-    int height = LAppDelegate::GetInstance()->GetWindowHeight();
+    csmUint32 width = 0;
+    csmUint32 height = 0;
+
+#if defined(CSM_TARGET_GPU)
+    LAppDelegate* delegate = LAppDelegate::GetInstance();
+    SDL_GPUCommandBuffer* commandBuffer = delegate->GetCurrentGPUCommandBuffer();
+    SDL_GPUTexture* swapchainTexture = delegate->GetCurrentGPUSwapchainTexture();
+    width = delegate->GetCurrentGPUSwapchainWidth();
+    height = delegate->GetCurrentGPUSwapchainHeight();
+
+    if (commandBuffer == NULL || swapchainTexture == NULL || width == 0 || height == 0)
+    {
+        return;
+    }
+#else
+    width = static_cast<csmUint32>(LAppDelegate::GetInstance()->GetWindowWidth());
+    height = static_cast<csmUint32>(LAppDelegate::GetInstance()->GetWindowHeight());
+#endif
 
 #if defined(CSM_TARGET_OPENGL)
     // モデルで使用するオフスクリーン管理の開始処理
@@ -261,6 +282,9 @@ void LAppLive2DManager::OnUpdate() const
 #elif defined(CSM_TARGET_VULKAN)
     // モデルで使用するオフスクリーン管理の開始処理
     Csm::Rendering::CubismOffscreenManager_Vulkan::GetInstance()->BeginFrameProcess();
+#elif defined(CSM_TARGET_GPU)
+    // モデルで使用するオフスクリーン管理の開始処理
+    Csm::Rendering::CubismOffscreenManager_SDL3::GetInstance()->BeginFrameProcess();
 #endif
 
     csmUint32 modelCount = _models.GetSize();
@@ -301,7 +325,7 @@ void LAppLive2DManager::OnUpdate() const
 #if defined(CSM_TARGET_OPENGL)
         // モデル1体描画後コール
         LAppDelegate::GetInstance()->GetView()->PostModelDraw(*model);
-#elif defined(CSM_TARGET_VULKAN)
+#elif defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
         // モデル1体描画後コール
         LAppDelegate::GetInstance()->GetView()->PostModelDraw(*model, i);
 #endif
@@ -317,6 +341,11 @@ void LAppLive2DManager::OnUpdate() const
     Csm::Rendering::CubismOffscreenManager_Vulkan::GetInstance()->EndFrameProcess();
     // もし余っているオフスクリーンのリソースを解放したい場合行う処理
     Csm::Rendering::CubismOffscreenManager_Vulkan::GetInstance()->ReleaseStaleRenderTextures();
+#elif defined(CSM_TARGET_GPU)
+    // モデルで使用するオフスクリーン管理の終了処理
+    Csm::Rendering::CubismOffscreenManager_SDL3::GetInstance()->EndFrameProcess();
+    // もし余っているオフスクリーンのリソースを解放したい場合行う処理
+    Csm::Rendering::CubismOffscreenManager_SDL3::GetInstance()->ReleaseStaleRenderTextures();
 #endif
 }
 
@@ -348,6 +377,9 @@ void LAppLive2DManager::ChangeScene(Csm::csmInt32 index)
 #if defined(CSM_TARGET_VULKAN)
     VulkanManager* vulkanManager = LAppDelegate::GetInstance()->GetVulkanManager();
     vkDeviceWaitIdle(vulkanManager->GetDevice());
+#elif defined(CSM_TARGET_GPU)
+    SDL_GPUDevice* device = LAppDelegate::GetInstance()->GetGPUDevice();
+    SDL_WaitForGPUIdle(device);
 #endif
 
     ReleaseAllModel();
@@ -360,6 +392,8 @@ void LAppLive2DManager::ChangeScene(Csm::csmInt32 index)
     _models[0]->LoadAssets(modelPath.GetRawString(), modelJsonName.GetRawString());
 #elif defined(CSM_TARGET_VULKAN)
     _models[0]->LoadAssets(vulkanManager->GetDevice(), vulkanManager->GetImageFormat(), modelPath.GetRawString(), modelJsonName.GetRawString());
+#elif defined(CSM_TARGET_GPU)
+    _models[0]->LoadAssets(device, modelPath.GetRawString(), modelJsonName.GetRawString());
 #endif
 
     /*
@@ -386,6 +420,8 @@ void LAppLive2DManager::ChangeScene(Csm::csmInt32 index)
         _models[1]->LoadAssets(modelPath.GetRawString(), modelJsonName.GetRawString());
 #elif defined(CSM_TARGET_VULKAN)
         _models[1]->LoadAssets(vulkanManager->GetDevice(), vulkanManager->GetImageFormat(), modelPath.GetRawString(), modelJsonName.GetRawString());
+#elif defined(CSM_TARGET_GPU)
+        _models[1]->LoadAssets(device, modelPath.GetRawString(), modelJsonName.GetRawString());
 #endif
         _models[1]->GetModelMatrix()->TranslateX(0.2f);
 #endif

@@ -1,3 +1,4 @@
 [submodule "Framework"]
 	path = Framework
-	url = https://github.com/Live2D/CubismNativeFramework.git
+	url = https://github.com/yukidaore/CubismNativeFramework.git
+	branch = feature/sdl3-rendering

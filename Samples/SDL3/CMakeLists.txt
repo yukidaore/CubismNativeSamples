@@ -14,13 +14,51 @@ include(FetchContent)
 FetchContent_Declare(
     SDL3
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-3.2.14
+    GIT_TAG release-3.4.0
     GIT_SHALLOW TRUE
 )
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL3)
 
+#
+# TODO 現状、vulkanのglslcで.spvをプリビルドする構成になっているので使用していない
+#
+# # SPIRV-Tools options
+# set(SPIRV_SKIP_TESTS ON CACHE BOOL "" FORCE)
+# set(SPIRV_SKIP_EXECUTABLES ON CACHE BOOL "" FORCE)
+# set(SKIP_SPIRV_TOOLS_INSTALL ON CACHE BOOL "" FORCE)
+# set(SPIRV_TOOLS_BUILD_STATIC ON CACHE BOOL "" FORCE)
+
+# FetchContent_Declare(
+# 	SPIRV-Headers
+# 	GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Headers.git
+# 	GIT_TAG vulkan-sdk-1.4.335.0
+# )
+# FetchContent_MakeAvailable(SPIRV-Headers)
+
+# FetchContent_Declare(
+# 	SPIRV-Tools
+# 	GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Tools.git
+# 	GIT_TAG vulkan-sdk-1.4.335.0
+# )
+# FetchContent_MakeAvailable(SPIRV-Tools)
+
+# # glslang options
+# set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
+# set(ENABLE_SPVREMAPPER OFF CACHE BOOL "" FORCE)
+# set(ENABLE_HLSL ON CACHE BOOL "" FORCE)
+# set(ENABLE_OPT ON CACHE BOOL "" FORCE)
+# set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+# set(SKIP_GLSLANG_INSTALL ON CACHE BOOL "" FORCE)
+# set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+# FetchContent_Declare(
+# 	glslang
+# 	GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
+# 	GIT_TAG 16.2.0
+# )
+# FetchContent_MakeAvailable(glslang)
 
 # Source files
 set(SDL3_SOURCE_FILES
@@ -104,6 +142,8 @@ if(USE_OPENGL)
     target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_OPENGL)
 elseif(USE_VULKAN)
     target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_VULKAN)
+elseif(USE_GPU)
+    target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_GPU)
 endif()
 
 # MSVC specific settings - use static runtime
@@ -151,11 +191,37 @@ if(USE_OPENGL)
 endif()
 
 if(USE_VULKAN)
-    set(SHADER_PATH ${SDK_ROOT_PATH}/Samples/Vulkan/Shaders)
+    # Vulkan uses pre-compiled shaders with standard Vulkan binding layout
+    set(SAMPLE_SHADER_PATH ${SDK_ROOT_PATH}/Samples/Vulkan/Shaders)
+    set(FRAMEWORK_SHADER_PATH ${FRAMEWORK_PATH}/src/Rendering/Vulkan/Shaders)
+    add_subdirectory(${SAMPLE_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/SampleShaders)
+    add_subdirectory(${FRAMEWORK_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/FrameworkShaders)
+    add_dependencies(Framework SampleShaders)
+    add_dependencies(Framework FrameworkShaders)
+
+    # copy compiled shader binaries
     add_custom_command(
       TARGET ${SDL3_SAMPLE_NAME}
       POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${SHADER_PATH} $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/Shaders
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/SampleShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/SampleShaders
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/FrameworkShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/FrameworkShaders
+    )
+elseif(USE_GPU)
+    # SDL3 GPU uses SPIR-V with SDL3-specific descriptor set layout
+    # (vertex: set 0=samplers, set 1=UBO; fragment: set 2=samplers, set 3=UBO)
+    set(SAMPLE_SHADER_PATH ${SDK_ROOT_PATH}/Samples/SDL3/Shaders)
+    set(FRAMEWORK_SHADER_PATH ${FRAMEWORK_PATH}/src/Rendering/SDL3_GPU/Shaders)
+    add_subdirectory(${SAMPLE_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders)
+    add_subdirectory(${FRAMEWORK_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/SDL3FrameworkShaders)
+    add_dependencies(Framework SampleShaders)
+    add_dependencies(Framework FrameworkShaders)
+
+    # copy compiled shader binaries
+    add_custom_command(
+      TARGET ${SDL3_SAMPLE_NAME}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/SampleShaders
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/SDL3FrameworkShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/FrameworkShaders
     )
 endif()
 
@@ -168,5 +234,6 @@ if(MSVC)
 endif()
 
 message(STATUS "SDL3 Sample Configuration:")
-message(STATUS "  OpenGL: ${USE_OPENGL}")
-message(STATUS "  Vulkan: ${USE_VULKAN}")
+message(STATUS "  OpenGL:   ${USE_OPENGL}")
+message(STATUS "  Vulkan:   ${USE_VULKAN}")
+message(STATUS "  SDL3_GPU: ${USE_GPU}")

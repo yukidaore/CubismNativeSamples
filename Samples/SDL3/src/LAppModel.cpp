@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -6,7 +6,6 @@
  */
 
 #include "LAppModel.hpp"
-#include <fstream>
 #include <vector>
 #include <CubismModelSettingJson.hpp>
 #include <Motion/CubismMotion.hpp>
@@ -20,6 +19,8 @@
 #include <Rendering/OpenGL/CubismRenderer_OpenGLES2.hpp>
 #elif defined(CSM_TARGET_VULKAN)
 #include <Rendering/Vulkan/CubismRenderer_Vulkan.hpp>
+#elif defined(CSM_TARGET_GPU)
+#include <Rendering/SDL3_GPU/CubismRenderer_SDL3.hpp>
 #endif
 
 #include "LAppDefine.hpp"
@@ -77,6 +78,8 @@ LAppModel::~LAppModel()
 void LAppModel::LoadAssets(const csmChar* dir, const csmChar* fileName)
 #elif defined(CSM_TARGET_VULKAN)
 void LAppModel::LoadAssets(VkDevice device, VkFormat imageFormat, const csmChar* dir, const csmChar* fileName)
+#elif defined(CSM_TARGET_GPU)
+void LAppModel::LoadAssets(SDL_GPUDevice* device, const csmChar* dir, const csmChar* fileName)
 #endif
 {
     _modelHomeDir = dir;
@@ -107,6 +110,8 @@ void LAppModel::LoadAssets(VkDevice device, VkFormat imageFormat, const csmChar*
     SetupTextures();
 #elif defined(CSM_TARGET_VULKAN)
     SetupTextures(device, imageFormat);
+#elif defined(CSM_TARGET_GPU)
+    SetupTextures(device);
 #endif
 }
 
@@ -527,6 +532,8 @@ void LAppModel::DoDraw()
     GetRenderer<Rendering::CubismRenderer_OpenGLES2>()->DrawModel();
 #elif defined(CSM_TARGET_VULKAN)
     GetRenderer<Rendering::CubismRenderer_Vulkan>()->DrawModel();
+#elif defined(CSM_TARGET_GPU)
+    GetRenderer<Rendering::CubismRenderer_SDL3>()->DrawModel();
 #endif
 }
 
@@ -542,6 +549,8 @@ void LAppModel::Draw(CubismMatrix44& matrix)
     GetRenderer<Rendering::CubismRenderer_OpenGLES2>()->SetMvpMatrix(&matrix);
 #elif defined(CSM_TARGET_VULKAN)
     GetRenderer<Rendering::CubismRenderer_Vulkan>()->SetMvpMatrix(&matrix);
+#elif defined(CSM_TARGET_GPU)
+    GetRenderer<Rendering::CubismRenderer_SDL3>()->SetMvpMatrix(&matrix);
 #endif
     DoDraw();
 }
@@ -605,18 +614,34 @@ void LAppModel::SetRandomExpression()
     }
 }
 
+#if defined(CSM_TARGET_OPENGL)
 void LAppModel::ReloadRenderer()
 {
     DeleteRenderer();
 
     CreateRenderer(LAppDelegate::GetInstance()->GetWindowWidth(), LAppDelegate::GetInstance()->GetWindowHeight());
 
-#if defined(CSM_TARGET_OPENGL)
     SetupTextures();
-#elif defined(CSM_TARGET_VULKAN)
-    SetupTextures(device, surfaceFormat);
-#endif
 }
+#elif defined(CSM_TARGET_VULKAN)
+void LAppModel::ReloadRenderer(VkDevice device, VkFormat surfaceFormat)
+{
+    DeleteRenderer();
+
+    CreateRenderer(LAppDelegate::GetInstance()->GetWindowWidth(), LAppDelegate::GetInstance()->GetWindowHeight());
+
+    SetupTextures(device, surfaceFormat);
+}
+#elif defined(CSM_TARGET_GPU)
+void LAppModel::ReloadRenderer(SDL_GPUDevice* device)
+{
+    DeleteRenderer();
+
+    CreateRenderer(LAppDelegate::GetInstance()->GetWindowWidth(), LAppDelegate::GetInstance()->GetWindowHeight());
+
+    SetupTextures(device);
+}
+#endif
 
 #if defined(CSM_TARGET_OPENGL)
 void LAppModel::SetupTextures()
@@ -684,6 +709,46 @@ void LAppModel::SetupTextures(VkDevice device, VkFormat surfaceFormat)
     GetRenderer<Rendering::CubismRenderer_Vulkan>()->IsPremultipliedAlpha(false);
 #endif
 }
+#elif defined(CSM_TARGET_GPU)
+void LAppModel::SetupTextures(SDL_GPUDevice* device)
+{
+    _bindTextureId.Clear();
+
+    for (csmInt32 modelTextureNumber = 0; modelTextureNumber < _modelSetting->GetTextureCount(); modelTextureNumber++)
+    {
+        // テクスチャ名が空文字だった場合はロード・バインド処理をスキップ
+        if (strcmp(_modelSetting->GetTextureFileName(modelTextureNumber), "") == 0)
+        {
+            continue;
+        }
+
+        // SDL3 GPUのテクスチャをロードする
+        csmString texturePath = _modelSetting->GetTextureFileName(modelTextureNumber);
+        texturePath = _modelHomeDir + texturePath;
+
+        LAppTextureManager::TextureInfo* texture = LAppDelegate::GetInstance()->GetTextureManager()->
+                CreateTextureFromPngFile(
+                    texturePath.GetRawString(), device,
+                    GetRenderer<Rendering::CubismRenderer_SDL3>()->GetAnisotropy());
+
+        if (texture)
+        {
+            const csmUint32 textureManageId = texture->id;
+            CubismImageSDL3 image;
+            if (LAppDelegate::GetInstance()->GetTextureManager()->GetTexture(textureManageId, image))
+            {
+                GetRenderer<Rendering::CubismRenderer_SDL3>()->BindTexture(image);
+                _bindTextureId.PushBack(textureManageId);
+            }
+        }
+    }
+
+#ifdef PREMULTIPLIED_ALPHA_ENABLE
+    GetRenderer<Rendering::CubismRenderer_SDL3>()->IsPremultipliedAlpha(true);
+#else
+    GetRenderer<Rendering::CubismRenderer_SDL3>()->IsPremultipliedAlpha(false);
+#endif
+}
 #endif
 
 void LAppModel::MotionEventFired(const csmString& eventValue)
@@ -698,6 +763,11 @@ Csm::Rendering::CubismRenderTarget_OpenGLES2& LAppModel::GetRenderBuffer()
 }
 #elif defined(CSM_TARGET_VULKAN)
 Csm::Rendering::CubismRenderTarget_Vulkan& LAppModel::GetRenderBuffer()
+{
+    return _renderBuffer;
+}
+#elif defined(CSM_TARGET_GPU)
+Csm::Rendering::CubismRenderTarget_SDL3& LAppModel::GetRenderBuffer()
 {
     return _renderBuffer;
 }

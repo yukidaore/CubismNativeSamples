@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -19,6 +19,26 @@
 #endif
 
 using namespace Csm;
+
+namespace {
+const csmBool DebugLogToFileEnable = false;
+
+void WriteDebugLogToFile(const csmChar* text)
+{
+    if (!DebugLogToFileEnable)
+    {
+        return;
+    }
+
+    static std::ofstream logFile("SDL3Demo_trace.log", std::ios::out | std::ios::app);
+    if (!logFile.is_open())
+    {
+        return;
+    }
+    logFile << text;
+    logFile.flush();
+}
+}
 
 double LAppPal::s_currentFrame = 0.0;
 double LAppPal::s_lastFrame = 0.0;
@@ -81,6 +101,7 @@ void LAppPal::PrintLog(const csmChar* format, ...)
     OutputDebugStringA(buf);
 #endif
     std::cerr << buf;
+    WriteDebugLogToFile(buf);
     va_end(args);
 }
 
@@ -96,6 +117,8 @@ void LAppPal::PrintLogLn(const csmChar* format, ...)
     OutputDebugStringA("\n");
 #endif
     std::cerr << buf << std::endl;
+    WriteDebugLogToFile(buf);
+    WriteDebugLogToFile("\n");
 }
 
 void LAppPal::PrintMessage(const csmChar* message)
@@ -104,6 +127,7 @@ void LAppPal::PrintMessage(const csmChar* message)
     OutputDebugStringA(message);
 #endif
     std::cerr << message;
+    WriteDebugLogToFile(message);
 }
 
 void LAppPal::PrintMessageLn(const csmChar* message)
@@ -129,9 +153,4 @@ void LAppPal::ConvertWideToMultiByte(const wchar_t* wide, char* multiByte, int m
     // Simple conversion for non-Windows platforms
     wcstombs(multiByte, wide, multiByteSize);
 #endif
-}
-
-// デバッグログ有効化フラグ（外部から参照されるため）
-namespace {
-    const csmBool DebugLogEnable = true;
 }

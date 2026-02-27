@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -12,6 +12,8 @@
 
 #if defined(CSM_TARGET_VULKAN)
 #include "VulkanManager.hpp"
+#elif defined(CSM_TARGET_GPU)
+#include <Rendering/SDL3_GPU/CubismRenderer_SDL3.hpp>
 #endif
 
 class LAppView;
@@ -76,6 +78,11 @@ public:
     * @brief スワップチェーンの再作成
     */
     bool RecreateSwapchain();
+#elif defined(CSM_TARGET_GPU)
+    /**
+    * @brief ウィンドウサイズ変更処理
+    */
+    void ResizeWindow(int width, int height);
 #endif
 
     /**
@@ -108,6 +115,46 @@ public:
     * @brief VulkanManagerを取得する。
     */
     VulkanManager* GetVulkanManager();
+#elif defined(CSM_TARGET_GPU)
+    /**
+    * @brief SDL GPUデバイスを取得する。
+    */
+    SDL_GPUDevice* GetGPUDevice() { return _gpuDevice; }
+
+    /**
+    * @brief スワップチェーンのテクスチャフォーマットを取得する。
+    */
+    SDL_GPUTextureFormat GetSwapchainFormat() { return _swapchainFormat; }
+
+    /**
+    * @brief 深度テクスチャフォーマットを取得する。
+    */
+    SDL_GPUTextureFormat GetDepthFormat() const { return _gpuDepthFormat; }
+
+    /**
+    * @brief アプリで設定したGPUフレーム数（in-flight）を取得する。
+    */
+    Csm::csmUint32 GetGPUAllowedFramesInFlight() const { return _gpuAllowedFramesInFlight; }
+
+    /**
+    * @brief 現在フレームのGPUコマンドバッファを取得する。
+    */
+    SDL_GPUCommandBuffer* GetCurrentGPUCommandBuffer() const;
+
+    /**
+    * @brief 現在フレームのスワップチェーンテクスチャを取得する。
+    */
+    SDL_GPUTexture* GetCurrentGPUSwapchainTexture() const;
+
+    /**
+    * @brief 現在フレームのスワップチェーン幅を取得する。
+    */
+    Csm::csmUint32 GetCurrentGPUSwapchainWidth() const;
+
+    /**
+    * @brief 現在フレームのスワップチェーン高さを取得する。
+    */
+    Csm::csmUint32 GetCurrentGPUSwapchainHeight() const;
 #endif
 
 #if defined(CSM_TARGET_OPENGL)
@@ -158,5 +205,10 @@ private:
 
 #if defined(CSM_TARGET_OPENGL)
     SDL_GLContext _glContext;                    ///< OpenGL コンテキスト
+#elif defined(CSM_TARGET_GPU)
+    SDL_GPUDevice* _gpuDevice;                   ///< SDL GPU デバイス
+    SDL_GPUTextureFormat _swapchainFormat;       ///< スワップチェーンのテクスチャフォーマット
+    SDL_GPUTextureFormat _gpuDepthFormat;        ///< 深度テクスチャフォーマット
+    Csm::csmUint32 _gpuAllowedFramesInFlight;    ///< 設定したGPUフレーム数（in-flight）
 #endif
 };

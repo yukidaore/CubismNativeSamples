@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -13,6 +13,9 @@
 #if defined(CSM_TARGET_VULKAN)
 #include <vulkan/vulkan.h>
 #include <Rendering/Vulkan/CubismClass_Vulkan.hpp>
+#elif defined(CSM_TARGET_GPU)
+#include <SDL3/SDL.h>
+#include <Rendering/SDL3_GPU/CubismClass_SDL3.hpp>
 #endif
 
 /**
@@ -77,6 +80,10 @@ public:
         std::string fileName, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
         VkMemoryPropertyFlags imageProperties, Csm::csmFloat32 anisotropy
     );
+#elif defined(CSM_TARGET_GPU)
+    TextureInfo* CreateTextureFromPngFile(
+        std::string fileName, SDL_GPUDevice* device, Csm::csmFloat32 anisotropy
+    );
 #endif
 
     /**
@@ -140,6 +147,15 @@ public:
     * @param[in] mipLevels      ミップレベル
     */
     void GenerateMipmaps(Live2D::Cubism::Framework::CubismImageVulkan image, uint32_t texWidth, uint32_t texHeight, uint32_t mipLevels);
+#elif defined(CSM_TARGET_GPU)
+    /**
+    * @brief テクスチャIDからCubismImageSDL3を得る
+    *
+    * @param[in] textureId  取得したいテクスチャID
+    * @param[out] retTexture  取得したテクスチャを格納する変数
+    * @return テクスチャが存在していればtrue
+    */
+    bool GetTexture(Csm::csmUint32 textureId, Live2D::Cubism::Framework::CubismImageSDL3& retTexture) const;
 #endif
 
 private:
@@ -150,5 +166,10 @@ private:
     Csm::csmVector<TextureInfo*> _texturesInfo;  ///< テクスチャ情報
     Csm::csmUint32 _sequenceId = 0;  ///< イメージのインデックス
     uint32_t _mipLevels = 0;  ///< ミップレベル
+#elif defined(CSM_TARGET_GPU)
+    Csm::csmVector<Live2D::Cubism::Framework::CubismImageSDL3> _textures;  ///< テクスチャの実体
+    Csm::csmVector<TextureInfo*> _texturesInfo;  ///< テクスチャ情報
+    Csm::csmUint32 _sequenceId = 0;  ///< イメージのインデックス
+    SDL_GPUDevice* _gpuDevice = nullptr;  ///< GPUデバイス
 #endif
 };

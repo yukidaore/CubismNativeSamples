@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -16,6 +16,10 @@
 #if defined(CSM_TARGET_VULKAN)
 #include "VulkanManager.hpp"
 #include "LAppDelegate.hpp"
+#elif defined(CSM_TARGET_GPU)
+#include "LAppDelegate.hpp"
+#include <cmath>
+#include <algorithm>
 #endif
 
 #define STBI_NO_STDIO
@@ -291,6 +295,100 @@ LAppTextureManager::TextureInfo* LAppTextureManager::CreateTextureFromPngFile(
     stagingBuffer.Destroy(device);
     return textureInfo;
 }
+#elif defined(CSM_TARGET_GPU)
+LAppTextureManager::TextureInfo* LAppTextureManager::CreateTextureFromPngFile(
+    std::string fileName, SDL_GPUDevice* device, Csm::csmFloat32 anisotropy)
+{
+    using namespace Live2D::Cubism::Framework;
+
+    // 既に読み込まれていればそれを返す
+    for (Csm::csmUint32 i = 0; i < _texturesInfo.GetSize(); i++)
+    {
+        if (_texturesInfo[i]->fileName == fileName)
+        {
+            return _texturesInfo[i];
+        }
+    }
+
+    _gpuDevice = device;
+
+    int width, height, channels;
+    unsigned int size;
+    unsigned char* png;
+    unsigned char* address;
+
+    address = LAppPal::LoadFileAsBytes(fileName, &size);
+
+    // png情報を取得する
+    png = stbi_load_from_memory(
+        address,
+        static_cast<int>(size),
+        &width,
+        &height,
+        &channels,
+        STBI_rgb_alpha);
+
+    if (!png)
+    {
+        LAppPal::PrintLogLn("couldn't load texture image: %s", fileName.c_str());
+        LAppPal::ReleaseBytes(address);
+        return nullptr;
+    }
+
+#ifdef PREMULTIPLIED_ALPHA_ENABLE
+    unsigned int* fourBytes = reinterpret_cast<unsigned int*>(png);
+    for (int i = 0; i < width * height; i++)
+    {
+        unsigned char* p = png + i * 4;
+        fourBytes[i] = Premultiply(p[0], p[1], p[2], p[3]);
+    }
+#endif
+
+    // テクスチャを作成
+    // stb_imageはRGBA順でピクセルデータを出力するため、
+    // スワップチェーンフォーマット(B8G8R8A8等)ではなくR8G8B8A8_UNORMを使用する
+    // Vulkan版と同様にミップマップを生成する（アンチエイリアス問題の解消）
+    csmUint32 mipLevels = static_cast<csmUint32>(std::floor(std::log2((std::max)(width, height)))) + 1;
+
+    CubismImageSDL3 textureImage;
+    textureImage.CreateTexture(
+        device,
+        width, height,
+        SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+        mipLevels
+    );
+
+    // データをアップロード（ミップマップも自動生成される）
+    textureImage.UploadTextureData(
+        device,
+        png,
+        static_cast<Csm::csmUint32>(width * height * 4),
+        width, height
+    );
+
+    // サンプラーを作成
+    textureImage.CreateSampler(device, anisotropy);
+
+    // 解放処理
+    stbi_image_free(png);
+    LAppPal::ReleaseBytes(address);
+
+    _textures.PushBack(textureImage);
+
+    LAppTextureManager::TextureInfo* textureInfo = new LAppTextureManager::TextureInfo();
+    if (textureInfo != NULL)
+    {
+        _sequenceId++;
+        textureInfo->fileName = fileName;
+        textureInfo->width = width;
+        textureInfo->height = height;
+        textureInfo->id = _sequenceId;
+        _texturesInfo.PushBack(textureInfo);
+    }
+
+    return textureInfo;
+}
 #endif
 
 void LAppTextureManager::ReleaseTextures()
@@ -312,6 +410,15 @@ void LAppTextureManager::ReleaseTextures()
         delete _texturesInfo[i];
     }
 
+    _texturesInfo.Clear();
+#elif defined(CSM_TARGET_GPU)
+    for (Csm::csmUint32 i = 0; i < _texturesInfo.GetSize(); i++)
+    {
+        _textures[i].Destroy(_gpuDevice);
+        delete _texturesInfo[i];
+    }
+
+    _textures.Clear();
     _texturesInfo.Clear();
 #endif
 }
@@ -346,6 +453,31 @@ void LAppTextureManager::ReleaseTexture(unsigned int textureId)
 
         // 実体除去
         _textures[i].Destroy(device);
+
+        _texturesInfo.Remove(i);
+        _textures.Remove(i);
+        break;
+    }
+    if (_texturesInfo.GetSize() == 0)
+    {
+        _texturesInfo.Clear();
+    }
+    if (_textures.GetSize() == 0)
+    {
+        _textures.Clear();
+    }
+#elif defined(CSM_TARGET_GPU)
+    for (Csm::csmUint32 i = 0; i < _texturesInfo.GetSize(); i++)
+    {
+        if (_texturesInfo[i]->id != textureId)
+        {
+            continue;
+        }
+        // info除去
+        delete _texturesInfo[i];
+
+        // 実体除去
+        _textures[i].Destroy(_gpuDevice);
 
         _texturesInfo.Remove(i);
         _textures.Remove(i);
@@ -402,6 +534,30 @@ void LAppTextureManager::ReleaseTexture(std::string fileName)
     {
         _textures.Clear();
     }
+#elif defined(CSM_TARGET_GPU)
+    for (Csm::csmUint32 i = 0; i < _texturesInfo.GetSize(); i++)
+    {
+        if (_texturesInfo[i]->fileName == fileName)
+        {
+            // info除去
+            delete _texturesInfo[i];
+
+            // 実体除去
+            _textures[i].Destroy(_gpuDevice);
+
+            _texturesInfo.Remove(i);
+            _textures.Remove(i);
+            break;
+        }
+    }
+    if (_texturesInfo.GetSize() == 0)
+    {
+        _texturesInfo.Clear();
+    }
+    if (_textures.GetSize() == 0)
+    {
+        _textures.Clear();
+    }
 #endif
 }
 
@@ -415,7 +571,7 @@ LAppTextureManager::TextureInfo* LAppTextureManager::GetTextureInfoById(unsigned
             return _textures[i];
         }
     }
-#elif defined(CSM_TARGET_VULKAN)
+#elif defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
     for (Csm::csmUint32 i = 0; i < _texturesInfo.GetSize(); i++)
     {
         if (_texturesInfo[i]->id == textureId)
@@ -430,6 +586,19 @@ LAppTextureManager::TextureInfo* LAppTextureManager::GetTextureInfoById(unsigned
 
 #if defined(CSM_TARGET_VULKAN)
 bool LAppTextureManager::GetTexture(Csm::csmUint32 textureId, CubismImageVulkan& retTexture) const
+{
+    for (Csm::csmUint32 i = 0; i < _texturesInfo.GetSize(); i++)
+    {
+        if (_texturesInfo[i]->id == textureId)
+        {
+            retTexture = _textures[i];
+            return true;
+        }
+    }
+    return false;
+}
+#elif defined(CSM_TARGET_GPU)
+bool LAppTextureManager::GetTexture(Csm::csmUint32 textureId, Live2D::Cubism::Framework::CubismImageSDL3& retTexture) const
 {
     for (Csm::csmUint32 i = 0; i < _texturesInfo.GetSize(); i++)
     {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -12,12 +12,18 @@
 #elif defined(CSM_TARGET_VULKAN)
 #include <Rendering/Vulkan/CubismClass_Vulkan.hpp>
 #include "LAppSprite_Common.hpp"
+#elif defined(CSM_TARGET_GPU)
+#include <SDL3/SDL.h>
+#include <Rendering/SDL3_GPU/CubismClass_SDL3.hpp>
+#include "LAppSprite_Common.hpp"
 #endif
 
 // 前方宣言
 #if defined(CSM_TARGET_VULKAN)
 class VulkanManager;
 class LAppSpritePipeline;
+#elif defined(CSM_TARGET_GPU)
+class LAppSpritePipeline_SDL3;
 #endif
 
 /**
@@ -26,7 +32,7 @@ class LAppSpritePipeline;
 * テクスチャID、Rect管理
 */
 class LAppSprite
-#if defined(CSM_TARGET_VULKAN)
+#if defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
     : public LAppSprite_Common
 #endif
 {
@@ -82,6 +88,23 @@ public:
 
     /**
      * @brief   スプライト用ユニフォームバッファオブジェクトの中身を保持する構造体
+     */
+    struct SpriteUBO
+    {
+        float spriteColor[4];
+    };
+#elif defined(CSM_TARGET_GPU)
+    /**
+     * @brief   頂点情報を保持する構造体
+     */
+    struct SpriteVertex
+    {
+        float x, y; // Position
+        float u, v; // UVs
+    };
+
+    /**
+     * @brief   スプライト用ユニフォームデータ構造体
      */
     struct SpriteUBO
     {
@@ -199,6 +222,71 @@ public:
     * @param[in]       pipeline      パイプラインクラスへのポインタ
     */
     void SetPipeline(LAppSpritePipeline* pipeline);
+#elif defined(CSM_TARGET_GPU)
+    /**
+    * @brief コンストラクタ
+    *
+    * @param[in]       device                  GPUデバイス
+    * @param[in]       x                       x座標
+    * @param[in]       y                       y座標
+    * @param[in]       width                   横幅
+    * @param[in]       height                  高さ
+    * @param[in]       textureId               テクスチャID
+    * @param[in]       pipeline                パイプライン
+    * @param[in]       texture                 テクスチャ
+    * @param[in]       sampler                 テクスチャサンプラー
+    */
+    LAppSprite(
+        SDL_GPUDevice* device,
+        float x, float y, float width, float height,
+        Csm::csmUint32 textureId, SDL_GPUGraphicsPipeline* pipeline,
+        SDL_GPUTexture* texture, SDL_GPUSampler* sampler);
+
+    /**
+    * @brief デストラクタ
+    */
+    ~LAppSprite();
+
+    /**
+    * @brief リソースを開放する
+    *
+    * @param[in]       device                  GPUデバイス
+    */
+    void Release(SDL_GPUDevice* device);
+
+    /**
+    * @brief 描画する
+    *
+    * @param[in]       renderPass             レンダーパス
+    * @param[in]       commandBuffer          コマンドバッファ
+    * @param[in]       windowWidth            ウィンドウ幅
+    * @param[in]       windowHeight           ウィンドウ高さ
+    */
+    void Render(SDL_GPURenderPass* renderPass, SDL_GPUCommandBuffer* commandBuffer, int windowWidth, int windowHeight);
+
+    /**
+    * @brief 頂点データをGPUバッファにアップロードする（コピーパス中に呼ぶこと）
+    *
+    * @param[in]       copyPass              コピーパス
+    * @param[in]       windowWidth           ウィンドウ幅
+    * @param[in]       windowHeight          ウィンドウ高さ
+    */
+    void UploadVertexData(SDL_GPUCopyPass* copyPass, int windowWidth, int windowHeight);
+
+    /**
+    * @brief パイプラインのセット
+    *
+    * @param[in]       pipeline      パイプライン
+    */
+    void SetPipeline(SDL_GPUGraphicsPipeline* pipeline);
+
+    /**
+     * @brief テクスチャとサンプラーを更新する
+     *
+     * @param[in]       texture                 テクスチャ
+     * @param[in]       sampler                 サンプラー
+     */
+    void UpdateTexture(SDL_GPUTexture* texture, SDL_GPUSampler* sampler);
 #endif
 
     /**
@@ -209,7 +297,7 @@ public:
     */
 #if defined(CSM_TARGET_OPENGL)
     bool IsHit(float pointX, float pointY) const;
-#elif defined(CSM_TARGET_VULKAN)
+#elif defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
     bool IsHit(int windowWidth, int windowHeight, float pointX, float pointY) const;
 #endif
 
@@ -274,5 +362,15 @@ private:
     VkDescriptorPool _descriptorPool; ///< ディスクリプタプール
     VkDescriptorSet _descriptorSet; ///< ディスクリプタセット
     bool isDescriptorUpdated;
+#elif defined(CSM_TARGET_GPU)
+    static const uint16_t VertexNum = 4;
+    static const uint16_t IndexNum = 6;
+    SDL_GPUDevice* _gpuDevice;                                      ///< GPUデバイス
+    Live2D::Cubism::Framework::CubismBufferSDL3 _vertexBuffer;      ///< 頂点バッファ
+    Live2D::Cubism::Framework::CubismBufferSDL3 _indexBuffer;       ///< インデックスバッファ
+    Live2D::Cubism::Framework::CubismBufferSDL3 _vertexTransferBuffer; ///< 頂点転送用ステージングバッファ（再利用）
+    SDL_GPUGraphicsPipeline* _pipeline;                             ///< パイプライン
+    SDL_GPUTexture* _texture;                                       ///< テクスチャ
+    SDL_GPUSampler* _sampler;                                       ///< サンプラー
 #endif
 };

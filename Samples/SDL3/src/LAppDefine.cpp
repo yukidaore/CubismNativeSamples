@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -38,7 +38,7 @@ namespace LAppDefine {
     const csmChar* PowerImageName = "close.png";
 
     // シェーダーパス
-#if defined(CSM_TARGET_VULKAN)
+#if defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
     const csmChar* ShaderPath = "SampleShaders/";
     const csmChar* VertShaderName = "VertSprite.spv";
     const csmChar* FragShaderName = "FragSprite.spv";

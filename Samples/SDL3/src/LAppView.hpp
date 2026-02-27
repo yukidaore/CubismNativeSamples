@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -16,6 +16,10 @@
 #include <Rendering/Vulkan/CubismRenderTarget_Vulkan.hpp>
 #include <Rendering/Vulkan/CubismRenderer_Vulkan.hpp>
 #include <vulkan/vulkan.h>
+#elif defined(CSM_TARGET_GPU)
+#include <Rendering/SDL3_GPU/CubismRenderTarget_SDL3.hpp>
+#include <Rendering/SDL3_GPU/CubismRenderer_SDL3.hpp>
+#include <SDL3/SDL.h>
 #endif
 
 class TouchManager_Common;
@@ -26,6 +30,8 @@ class LAppSpriteShader;
 #elif defined(CSM_TARGET_VULKAN)
 class LAppSpritePipeline;
 class LAppModelSpritePipeline;
+#elif defined(CSM_TARGET_GPU)
+// SDL3_GPU uses SDL_GPUGraphicsPipeline directly
 #endif
 
 /**
@@ -99,6 +105,16 @@ public:
     * @brief オフスクリーンの破棄
     */
     void DestroyRenderTarget();
+#elif defined(CSM_TARGET_GPU)
+    /**
+    * @brief ウィンドウサイズ変更の際にスプライトを再作成する
+    */
+    void ResizeSprite(int width, int height);
+
+    /**
+    * @brief オフスクリーンの破棄
+    */
+    void DestroyRenderTarget();
 #endif
 
     /**
@@ -135,7 +151,7 @@ public:
      */
 #if defined(CSM_TARGET_OPENGL)
     void PostModelDraw(LAppModel& refModel);
-#elif defined(CSM_TARGET_VULKAN)
+#elif defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
     void PostModelDraw(LAppModel& refModel, Csm::csmInt32 modelIndex);
 #endif
 
@@ -168,6 +184,10 @@ private:
     Csm::Rendering::CubismRenderTarget_Vulkan _renderBuffer;
     LAppSpritePipeline* _spritePipeline;          ///< スプライト用パイプライン
     LAppModelSpritePipeline* _modelSpritePipeline; ///< モデルスプライト用パイプライン
+#elif defined(CSM_TARGET_GPU)
+    Csm::Rendering::CubismRenderTarget_SDL3 _renderBuffer;
+    SDL_GPUGraphicsPipeline* _spritePipeline;     ///< スプライト用パイプライン
+    SDL_GPUGraphicsPipeline* _modelSpritePipeline; ///< モデルスプライト用パイプライン
 #endif
 
     SelectTarget _renderTarget;                   ///< レンダリング先の選択肢

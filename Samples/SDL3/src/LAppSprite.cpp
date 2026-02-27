@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright(c) Live2D Inc. All rights reserved.
  *
  * Use of this source code is governed by the Live2D Open Software license
@@ -11,6 +11,8 @@
 #if defined(CSM_TARGET_VULKAN)
 #include "VulkanManager.hpp"
 #include "LAppSpritePipeline.hpp"
+#elif defined(CSM_TARGET_GPU)
+#include "LAppDelegate.hpp"
 #endif
 
 using namespace Csm;
@@ -374,6 +376,180 @@ void LAppSprite::SetPipeline(LAppSpritePipeline* pipeline)
 {
     _pipeline = pipeline;
 }
+#elif defined(CSM_TARGET_GPU)
+
+LAppSprite::LAppSprite(
+    SDL_GPUDevice* device,
+    float x, float y, float width, float height,
+    Csm::csmUint32 textureId, SDL_GPUGraphicsPipeline* pipeline,
+    SDL_GPUTexture* texture, SDL_GPUSampler* sampler)
+    : LAppSprite_Common(textureId),
+    _rect(),
+    _pipeline(pipeline),
+    _gpuDevice(device),
+    _texture(texture),
+    _sampler(sampler)
+{
+    _rect.left = (x - width * 0.5f);
+    _rect.right = (x + width * 0.5f);
+    _rect.up = (y - height * 0.5f);
+    _rect.down = (y + height * 0.5f);
+
+    _spriteColor[0] = 1.0f;
+    _spriteColor[1] = 1.0f;
+    _spriteColor[2] = 1.0f;
+    _spriteColor[3] = 1.0f;
+
+    // 頂点バッファ作成
+    if (_vertexBuffer.GetBuffer() == nullptr)
+    {
+        csmUint32 bufferSize = sizeof(SpriteVertex) * VertexNum;
+        _vertexBuffer.CreateBuffer(device, bufferSize, SDL_GPU_BUFFERUSAGE_VERTEX);
+    }
+
+    // インデックスバッファ作成
+    if (_indexBuffer.GetBuffer() == nullptr)
+    {
+        uint16_t idx[IndexNum] = {
+            0, 1, 2,
+            1, 3, 2
+        };
+
+        uint32_t bufferSize = sizeof(uint16_t) * IndexNum;
+        _indexBuffer.CreateBuffer(device, bufferSize, SDL_GPU_BUFFERUSAGE_INDEX);
+
+        // データをアップロード
+        Live2D::Cubism::Framework::CubismBufferSDL3 transferBuffer;
+        transferBuffer.CreateTransferBuffer(device, bufferSize, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD);
+        void* mapped = transferBuffer.MapTransferBuffer(device, false);
+        if (mapped)
+        {
+            memcpy(mapped, idx, bufferSize);
+            transferBuffer.UnmapTransferBuffer(device);
+
+            SDL_GPUCommandBuffer* cmdBuf = SDL_AcquireGPUCommandBuffer(device);
+            if (cmdBuf)
+            {
+                SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuf);
+                if (copyPass)
+                {
+                    _indexBuffer.UploadToBuffer(copyPass, &transferBuffer, bufferSize);
+                    SDL_EndGPUCopyPass(copyPass);
+                }
+                SDL_SubmitGPUCommandBuffer(cmdBuf);
+            }
+        }
+        transferBuffer.Destroy(device);
+    }
+}
+
+LAppSprite::~LAppSprite()
+{
+}
+
+void LAppSprite::Release(SDL_GPUDevice* device)
+{
+    _vertexBuffer.Destroy(device);
+    _indexBuffer.Destroy(device);
+    _vertexTransferBuffer.Destroy(device);
+}
+
+void LAppSprite::Render(SDL_GPURenderPass* renderPass, SDL_GPUCommandBuffer* commandBuffer, int windowWidth, int windowHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0 || _pipeline == nullptr)
+    {
+        return;
+    }
+
+    // パイプラインをバインド
+    SDL_BindGPUGraphicsPipeline(renderPass, _pipeline);
+
+    // テクスチャとサンプラーをバインド（シェーダーが2サンプラー宣言しているため2スロットバインド）
+    SDL_GPUTextureSamplerBinding textureSamplerBindings[2] = {};
+    textureSamplerBindings[0].texture = _texture;
+    textureSamplerBindings[0].sampler = _sampler;
+    // s_texture1 は未使用だが宣言があるため同じテクスチャで埋める
+    textureSamplerBindings[1].texture = _texture;
+    textureSamplerBindings[1].sampler = _sampler;
+    SDL_BindGPUFragmentSamplers(renderPass, 0, textureSamplerBindings, 2);
+
+    // ユニフォームデータをプッシュ
+    SpriteUBO ubo;
+    ubo.spriteColor[0] = _spriteColor[0];
+    ubo.spriteColor[1] = _spriteColor[1];
+    ubo.spriteColor[2] = _spriteColor[2];
+    ubo.spriteColor[3] = _spriteColor[3];
+    SDL_PushGPUFragmentUniformData(commandBuffer, 0, &ubo, sizeof(SpriteUBO));
+
+    // 頂点バッファをバインド
+    SDL_GPUBufferBinding vertexBinding = {};
+    vertexBinding.buffer = _vertexBuffer.GetBuffer();
+    vertexBinding.offset = 0;
+    SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
+
+    // インデックスバッファをバインド
+    SDL_GPUBufferBinding indexBinding = {};
+    indexBinding.buffer = _indexBuffer.GetBuffer();
+    indexBinding.offset = 0;
+    SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+    // 描画
+    SDL_DrawGPUIndexedPrimitives(renderPass, IndexNum, 1, 0, 0, 0);
+}
+
+void LAppSprite::UploadVertexData(SDL_GPUCopyPass* copyPass, int windowWidth, int windowHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0)
+    {
+        return;
+    }
+
+    // 頂点データ更新
+    SpriteVertex vertices[VertexNum] = {
+        { (_rect.left  - windowWidth * 0.5f) / (windowWidth * 0.5f), (windowHeight * 0.5f - _rect.up) / (windowHeight * 0.5f), 0.0f, 0.0f },
+        { (_rect.right - windowWidth * 0.5f) / (windowWidth * 0.5f), (windowHeight * 0.5f - _rect.up) / (windowHeight * 0.5f), 1.0f, 0.0f },
+        { (_rect.left  - windowWidth * 0.5f) / (windowWidth * 0.5f), (windowHeight * 0.5f - _rect.down) / (windowHeight * 0.5f), 0.0f, 1.0f },
+        { (_rect.right - windowWidth * 0.5f) / (windowWidth * 0.5f), (windowHeight * 0.5f - _rect.down) / (windowHeight * 0.5f), 1.0f, 1.0f }
+    };
+
+    // 頂点バッファにデータをアップロード (transfer bufferを再利用)
+    csmUint32 bufferSize = sizeof(SpriteVertex) * VertexNum;
+    if (_vertexTransferBuffer.GetTransferBuffer() == nullptr)
+    {
+        _vertexTransferBuffer.CreateTransferBuffer(_gpuDevice, bufferSize, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD);
+    }
+    void* mapped = _vertexTransferBuffer.MapTransferBuffer(_gpuDevice, true);
+    if (mapped)
+    {
+        memcpy(mapped, vertices, bufferSize);
+        _vertexTransferBuffer.UnmapTransferBuffer(_gpuDevice);
+
+        _vertexBuffer.UploadToBuffer(copyPass, &_vertexTransferBuffer, bufferSize);
+    }
+}
+
+bool LAppSprite::IsHit(int windowWidth, int windowHeight, float pointX, float pointY) const
+{
+    if (windowWidth == 0 || windowHeight == 0)
+    {
+        return false;
+    }
+
+    float y = pointY;
+
+    return (pointX >= _rect.left && pointX <= _rect.right && y >= _rect.up && y <= _rect.down);
+}
+
+void LAppSprite::SetPipeline(SDL_GPUGraphicsPipeline* pipeline)
+{
+    _pipeline = pipeline;
+}
+
+void LAppSprite::UpdateTexture(SDL_GPUTexture* texture, SDL_GPUSampler* sampler)
+{
+    _texture = texture;
+    _sampler = sampler;
+}
 #endif
 
 void LAppSprite::SetColor(float r, float g, float b, float a)
@@ -391,7 +567,7 @@ void LAppSprite::ResetRect(float x, float y, float width, float height)
 #if defined(CSM_TARGET_OPENGL)
     _rect.up = (y + height * 0.5f);
     _rect.down = (y - height * 0.5f);
-#elif defined(CSM_TARGET_VULKAN)
+#elif defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
     _rect.up = (y - height * 0.5f);
     _rect.down = (y + height * 0.5f);
 #endif
