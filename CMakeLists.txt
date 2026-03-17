@@ -30,6 +30,32 @@ option(USE_OPENGL "Use OpenGL backend" ON)
 option(USE_VULKAN "Use Vulkan backend" OFF)
 option(USE_GPU "Use SDL3 GPU backend" OFF)
 
+# GPU backend selection (used when USE_GPU=ON)
+option(USE_GPU_BACKEND_VULKAN "Use Vulkan (SPIR-V) backend for SDL3 GPU" ON)
+option(USE_GPU_BACKEND_D3D12 "Use D3D12 (DXIL) backend for SDL3 GPU" ON)
+option(USE_GPU_BACKEND_METAL "Use Metal (MSL) backend for SDL3 GPU" ON)
+
+# ----------------------------------------------------------------------------------------
+# PRIVATEシェーダー(NDAプラットフォーム)を有効にするかどうか
+option(USE_GPU_BACKEND_PRIVATE "Enable SDL_GPU_SHADERFORMAT_PRIVATE support" OFF)
+# NDA環境ではマルチアーキテクチャ対応は有効にしないと思うので強制的にOFFする
+if(USE_GPU_BACKEND_PRIVATE)
+  set(USE_GPU_BACKEND_VULKAN OFF CACHE BOOL "" FORCE)
+  set(USE_GPU_BACKEND_D3D12 OFF CACHE BOOL "" FORCE)
+  set(USE_GPU_BACKEND_METAL OFF CACHE BOOL "" FORCE)
+endif()
+
+# PRIVATEシェーダー用の設定例(FrameworkのCubismRenderer_SDL3.cppで参照)
+# Framework用PRIVATEシェーダーの配置場所
+set(CSM_PRIVATE_SHADER_SUBDIR "priv/" CACHE STRING "Shaderfile subdir for PRIVATE shaders")
+# Framework用PRIVATEシェーダーの拡張子 (例: .bin)
+set(CSM_PRIVATE_SHADER_EXT ".bin" CACHE STRING "File extension for PRIVATE shaders")
+# Framework用PRIVATEシェーダーのエントリポイント名 (例: main)
+set(CSM_PRIVATE_SHADER_ENTRY "main" CACHE STRING "Entry point name for PRIVATE shaders")
+
+
+# ----------------------------------------------------------------------------------------
+
 # Detect architecture.
 if(CMAKE_EXE_LINKER_FLAGS STREQUAL "/machine:x64" OR CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(ARCH x86_64)
@@ -136,6 +162,14 @@ elseif(USE_VULKAN)
 elseif(USE_GPU)
   target_include_directories(Framework PUBLIC ${SDL3_INCLUDE_DIRS})
   target_link_libraries(Framework PUBLIC Live2DCubismCore SDL3::SDL3)
+  # SDL_GPU_SHADERFORMAT_PRIVATE 用のコンパイル定義をFrameworkに伝搬
+  if(USE_GPU_BACKEND_PRIVATE)
+    target_compile_definitions(Framework PUBLIC
+        CSM_SDL3_GPU_PRIVATE_SHADER_SUBDIR=${CSM_PRIVATE_SHADER_SUBDIR}
+        CSM_SDL3_GPU_PRIVATE_SHADER_EXTENSION=${CSM_PRIVATE_SHADER_EXT}
+        CSM_SDL3_GPU_PRIVATE_SHADER_ENTRYPOINT=${CSM_PRIVATE_SHADER_ENTRY}
+    )
+  endif()
 else()
 endif()
 

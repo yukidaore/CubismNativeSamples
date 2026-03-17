@@ -38,10 +38,14 @@ namespace LAppDefine {
     const csmChar* PowerImageName = "close.png";
 
     // シェーダーパス
-#if defined(CSM_TARGET_VULKAN) || defined(CSM_TARGET_GPU)
+#if defined(CSM_TARGET_VULKAN)
     const csmChar* ShaderPath = "SampleShaders/";
     const csmChar* VertShaderName = "VertSprite.spv";
     const csmChar* FragShaderName = "FragSprite.spv";
+#elif defined(CSM_TARGET_GPU)
+    const csmChar* ShaderPath = "SampleShaders/";
+    const csmChar* VertShaderName = "VertSprite";
+    const csmChar* FragShaderName = "FragSprite";
 #else
     const csmChar* ShaderPath = "SampleShaders/";
     const csmChar* VertShaderName = "VertSprite.vert";

@@ -198,10 +198,38 @@ bool LAppDelegate::Initialize()
     }
 
     // SDL GPUデバイスの作成（デバッグモード有効で詳細なバリデーションエラーを出力）
+    SDL_GPUShaderFormat shaderFormats = 0;
+    const char* gpuDriverHint = NULL;
+    int backendCount = 0;
+#if defined(CSM_TARGET_GPU_VULKAN)
+    shaderFormats |= SDL_GPU_SHADERFORMAT_SPIRV;
+    gpuDriverHint = "vulkan";
+    backendCount++;
+#endif
+#if defined(CSM_TARGET_GPU_D3D12)
+    shaderFormats |= SDL_GPU_SHADERFORMAT_DXIL;
+    gpuDriverHint = "direct3d12";
+    backendCount++;
+#endif
+#if defined(CSM_TARGET_GPU_METAL)
+    shaderFormats |= SDL_GPU_SHADERFORMAT_MSL;
+    gpuDriverHint = "metal";
+    backendCount++;
+#endif
+    // マクロ未定義または複数定義時は全フォーマットを提示してSDLに選択させる
+    if (shaderFormats == 0)
+    {
+        shaderFormats = SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_MSL;
+    }
+    if (backendCount != 1)
+    {
+        gpuDriverHint = NULL;
+    }
+
     _gpuDevice = SDL_CreateGPUDevice(
-        SDL_GPU_SHADERFORMAT_SPIRV,
-        true,   // debug mode - バリデーション有効化
-        NULL    // driver hint
+        shaderFormats,
+        true,           // debug mode - バリデーション有効化
+        gpuDriverHint   // driver hint
     );
 
     if (_gpuDevice == NULL)

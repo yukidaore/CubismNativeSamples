@@ -21,45 +21,6 @@ set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL3)
 
-#
-# TODO 現状、vulkanのglslcで.spvをプリビルドする構成になっているので使用していない
-#
-# # SPIRV-Tools options
-# set(SPIRV_SKIP_TESTS ON CACHE BOOL "" FORCE)
-# set(SPIRV_SKIP_EXECUTABLES ON CACHE BOOL "" FORCE)
-# set(SKIP_SPIRV_TOOLS_INSTALL ON CACHE BOOL "" FORCE)
-# set(SPIRV_TOOLS_BUILD_STATIC ON CACHE BOOL "" FORCE)
-
-# FetchContent_Declare(
-# 	SPIRV-Headers
-# 	GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Headers.git
-# 	GIT_TAG vulkan-sdk-1.4.335.0
-# )
-# FetchContent_MakeAvailable(SPIRV-Headers)
-
-# FetchContent_Declare(
-# 	SPIRV-Tools
-# 	GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Tools.git
-# 	GIT_TAG vulkan-sdk-1.4.335.0
-# )
-# FetchContent_MakeAvailable(SPIRV-Tools)
-
-# # glslang options
-# set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
-# set(ENABLE_SPVREMAPPER OFF CACHE BOOL "" FORCE)
-# set(ENABLE_HLSL ON CACHE BOOL "" FORCE)
-# set(ENABLE_OPT ON CACHE BOOL "" FORCE)
-# set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-# set(SKIP_GLSLANG_INSTALL ON CACHE BOOL "" FORCE)
-# set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-
-# FetchContent_Declare(
-# 	glslang
-# 	GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
-# 	GIT_TAG 16.2.0
-# )
-# FetchContent_MakeAvailable(glslang)
-
 # Source files
 set(SDL3_SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
@@ -144,6 +105,16 @@ elseif(USE_VULKAN)
     target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_VULKAN)
 elseif(USE_GPU)
     target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_GPU)
+    # GPU バックエンド選択マクロ
+    if(USE_GPU_BACKEND_VULKAN)
+        target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_GPU_VULKAN)
+    endif()
+    if(USE_GPU_BACKEND_D3D12)
+        target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_GPU_D3D12)
+    endif()
+    if(USE_GPU_BACKEND_METAL)
+        target_compile_definitions(${SDL3_SAMPLE_NAME} PRIVATE CSM_TARGET_GPU_METAL)
+    endif()
 endif()
 
 # MSVC specific settings - use static runtime
@@ -191,7 +162,6 @@ if(USE_OPENGL)
 endif()
 
 if(USE_VULKAN)
-    # Vulkan uses pre-compiled shaders with standard Vulkan binding layout
     set(SAMPLE_SHADER_PATH ${SDK_ROOT_PATH}/Samples/Vulkan/Shaders)
     set(FRAMEWORK_SHADER_PATH ${FRAMEWORK_PATH}/src/Rendering/Vulkan/Shaders)
     add_subdirectory(${SAMPLE_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/SampleShaders)
@@ -206,23 +176,151 @@ if(USE_VULKAN)
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/SampleShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/SampleShaders
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/FrameworkShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/FrameworkShaders
     )
-elseif(USE_GPU)
-    # SDL3 GPU uses SPIR-V with SDL3-specific descriptor set layout
-    # (vertex: set 0=samplers, set 1=UBO; fragment: set 2=samplers, set 3=UBO)
+endif()
+
+if(USE_GPU)
     set(SAMPLE_SHADER_PATH ${SDK_ROOT_PATH}/Samples/SDL3/Shaders)
     set(FRAMEWORK_SHADER_PATH ${FRAMEWORK_PATH}/src/Rendering/SDL3_GPU/Shaders)
+
+    # --- Resolve shadercross executable ---
+    set(SHADERCROSS_FOUND FALSE)
+    set(SHADERCROSS_TARGET_DEPENDS "")
+    if(DEFINED ENV{SDL_SHADERCROSS_PATH})
+        find_program(_SHADERCROSS_EXE shadercross PATHS "$ENV{SDL_SHADERCROSS_PATH}" NO_DEFAULT_PATH)
+        if(_SHADERCROSS_EXE)
+            set(SHADERCROSS_COMMAND "${_SHADERCROSS_EXE}")
+            set(SHADERCROSS_FOUND TRUE)
+            message(STATUS "Found shadercross: ${SHADERCROSS_COMMAND}")
+        endif()
+    endif()
+
+    if(NOT SHADERCROSS_FOUND)
+        # build own shadercross
+        message(STATUS "shadercross not found in SDL_SHADERCROSS_PATH, building from source...")
+        FetchContent_Declare(
+            sdl_shadercross
+            GIT_REPOSITORY https://github.com/libsdl-org/SDL_shadercross.git
+            GIT_TAG main
+            GIT_SHALLOW TRUE
+        )
+
+        # shadercross CLIをstaticビルド
+        set(SDLSHADERCROSS_STATIC ON CACHE BOOL "" FORCE)
+        set(SDLSHADERCROSS_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDLSHADERCROSS_CLI ON CACHE BOOL "" FORCE)
+        set(SDLSHADERCROSS_VENDORED ON CACHE BOOL "" FORCE)
+        set(SDLSHADERCROSS_SPIRVCROSS_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL3_DIR "${sdl3_BINARY_DIR}" CACHE PATH "" FORCE)
+
+        # shadercrossのexternalのビルドでパスがかなり長くなり、ソースツリーを
+        # 置いたパスによっては"Filename too long" エラーが起きる可能性がある。
+        # 回避策としてGitに core.longpaths=true を強制する環境変数を一時設定 (Git 2.31+)
+        if(WIN32)
+            set(ENV{GIT_CONFIG_COUNT} "1")
+            set(ENV{GIT_CONFIG_KEY_0} "core.longpaths")
+            set(ENV{GIT_CONFIG_VALUE_0} "true")
+            # オブジェクトファイルのパス長が250文字(CMakeデフォルト制限)を超える場合の警告を抑制
+            set(CMAKE_OBJECT_PATH_MAX 500)
+        endif()
+
+        # 一時的にshadercross関連ビルドを完全にstaticになるようにさしかえ
+        set(_prev_build_shared_libs ${BUILD_SHARED_LIBS})
+        set(BUILD_SHARED_LIBS OFF)
+        FetchContent_MakeAvailable(sdl_shadercross)
+        set(BUILD_SHARED_LIBS ${_prev_build_shared_libs})
+
+        set(SHADERCROSS_COMMAND "$<TARGET_FILE:shadercross>")
+        set(SHADERCROSS_TARGET_DEPENDS "shadercross")
+        set(SHADERCROSS_FOUND TRUE)
+        message(STATUS "Will build shadercross from source")
+
+        # DirectXShaderCompiler は static ビルドができないため常に共有ライブラリになる。
+        # shadercross の実行時に dxcompiler.dll / dxil.dll が必要なので、
+        # shadercross のビルド完了後にその実行ファイルと同じディレクトリへコピーする。
+        # パスは FetchContent が設定する sdl_shadercross_BINARY_DIR と
+        # ビルド構成を表す $<CONFIG> ジェネレータ式で組み立てる。
+        #
+        # NOTE: add_custom_command(TARGET ...) は対象ターゲットが作成された
+        #       ディレクトリ内でしか使えないため、shadercross(FetchContent由来)には使えない。
+        #       代わりに add_custom_target + DEPENDS で同等の動作を実現する。
+        if(WIN32)
+            set(_dxc_bin_dir
+                "${sdl_shadercross_BINARY_DIR}/external/DirectXShaderCompiler/$<CONFIG>/bin")
+            add_custom_target(shadercross_copy_dlls
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_dxc_bin_dir}/dxcompiler.dll"
+                    "${_dxc_bin_dir}/dxil.dll"
+                    "$<TARGET_FILE_DIR:shadercross>"
+                DEPENDS shadercross
+                COMMENT "Copying DirectXShaderCompiler DLLs next to shadercross"
+            )
+            set(SHADERCROSS_TARGET_DEPENDS "shadercross_copy_dlls")
+        endif()
+    endif()
+
     add_subdirectory(${SAMPLE_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders)
     add_subdirectory(${FRAMEWORK_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/SDL3FrameworkShaders)
-    add_dependencies(Framework SampleShaders)
-    add_dependencies(Framework FrameworkShaders)
 
-    # copy compiled shader binaries
-    add_custom_command(
-      TARGET ${SDL3_SAMPLE_NAME}
-      POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/SampleShaders
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/SDL3FrameworkShaders/compiledShaders $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/FrameworkShaders
-    )
+    # USE_GPU_BACKEND_XXX に応じて必要なシェーダーフォーマットのみビルド・コピー
+    if(USE_GPU_BACKEND_VULKAN)
+        add_dependencies(Framework FrameworkShaders_SPIRV SampleShaders_SPIRV)
+        add_custom_command(TARGET ${SDL3_SAMPLE_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders/compiledShaders/spv
+                $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/SampleShaders/spv
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_BINARY_DIR}/SDL3FrameworkShaders/compiledShaders/spv
+                $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/FrameworkShaders/spv
+        )
+    endif()
+    if(USE_GPU_BACKEND_D3D12)
+        add_dependencies(Framework FrameworkShaders_DXIL SampleShaders_DXIL)
+        add_custom_command(TARGET ${SDL3_SAMPLE_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders/compiledShaders/dxil
+                $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/SampleShaders/dxil
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_BINARY_DIR}/SDL3FrameworkShaders/compiledShaders/dxil
+                $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/FrameworkShaders/dxil
+        )
+    endif()
+    if(USE_GPU_BACKEND_METAL)
+        add_dependencies(Framework FrameworkShaders_MSL SampleShaders_MSL)
+        add_custom_command(TARGET ${SDL3_SAMPLE_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders/compiledShaders/msl
+                $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/SampleShaders/msl
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_BINARY_DIR}/SDL3FrameworkShaders/compiledShaders/msl
+                $<TARGET_FILE_DIR:${SDL3_SAMPLE_NAME}>/FrameworkShaders/msl
+        )
+    endif()
+
+    # --- NDA/PRIVATEシェーダービルド用フック ---
+    # 利用者は独自のシェーダービルド処理をCMakeファイルとして差し込める。
+    # フック内では以下の変数が利用可能:
+    #   FRAMEWORK_SHADER_PATH  - Frameworkシェーダーソースディレクトリ
+    #   SAMPLE_SHADER_PATH     - Sampleシェーダーソースディレクトリ
+    #   SDL3_SAMPLE_NAME       - サンプルアプリのターゲット名
+    #   SDK_ROOT_PATH          - SDKルートパス
+    #
+    # 優先順位:
+    #   1. CSM_PRIVATE_SHADER_CMAKE 変数で指定されたファイル
+    #   2. ${CMAKE_CURRENT_SOURCE_DIR}/PrivateShaders.cmake (Convention)
+    if(DEFINED CSM_PRIVATE_SHADER_CMAKE)
+        if(EXISTS "${CSM_PRIVATE_SHADER_CMAKE}")
+            message(STATUS "Including private shader build: ${CSM_PRIVATE_SHADER_CMAKE}")
+            include("${CSM_PRIVATE_SHADER_CMAKE}")
+        else()
+            message(WARNING "CSM_PRIVATE_SHADER_CMAKE is set but file not found: ${CSM_PRIVATE_SHADER_CMAKE}")
+        endif()
+    else()
+        set(_private_shader_hook "${CMAKE_CURRENT_SOURCE_DIR}/PrivateShaders.cmake")
+        if(EXISTS "${_private_shader_hook}")
+            message(STATUS "Including private shader build (convention): ${_private_shader_hook}")
+            include("${_private_shader_hook}")
+        endif()
+    endif()
 endif()
 
 # Set project properties.
@@ -237,3 +335,7 @@ message(STATUS "SDL3 Sample Configuration:")
 message(STATUS "  OpenGL:   ${USE_OPENGL}")
 message(STATUS "  Vulkan:   ${USE_VULKAN}")
 message(STATUS "  SDL3_GPU: ${USE_GPU}")
+message(STATUS "  - backend: Vulkan:  ${USE_GPU_BACKEND_VULKAN}")
+message(STATUS "  - backend: D3D12:   ${USE_GPU_BACKEND_D3D12}")
+message(STATUS "  - backend: Metal:   ${USE_GPU_BACKEND_METAL}")
+message(STATUS "  - backend: Private: ${USE_GPU_BACKEND_PRIVATE}")

@@ -57,3 +57,5 @@ clean:
 install:
 	cmake --install $(BUILD_PATH) --config $(BUILD_TYPE) --prefix $(INSTALL_PREFIX)
 
+run:
+	cd build/x64-windows/bin/$(BUILD_TYPE) && ./SDL3Demo.exe

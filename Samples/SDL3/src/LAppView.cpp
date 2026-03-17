@@ -34,23 +34,61 @@ using namespace LAppDefine;
 #if defined(CSM_TARGET_GPU)
 namespace {
     /**
+     * @brief デバイスのサポートするシェーダーフォーマット情報
+     */
+    struct ShaderFormatInfo
+    {
+        SDL_GPUShaderFormat format;
+        const char* subDir;
+        const char* extension;
+        const char* entrypoint;
+    };
+
+    /**
+     * @brief デバイスがサポートするシェーダーフォーマットを検出する
+     */
+    ShaderFormatInfo DetectShaderFormat(SDL_GPUDevice* device)
+    {
+        SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device);
+        if (formats & SDL_GPU_SHADERFORMAT_SPIRV)
+        {
+            return { SDL_GPU_SHADERFORMAT_SPIRV, "spv/", ".spv", "main" };
+        }
+        else if (formats & SDL_GPU_SHADERFORMAT_DXIL)
+        {
+            return { SDL_GPU_SHADERFORMAT_DXIL, "dxil/", ".dxil", "main" };
+        }
+        else if (formats & SDL_GPU_SHADERFORMAT_MSL)
+        {
+            return { SDL_GPU_SHADERFORMAT_MSL, "msl/", ".msl", "main0" };
+        }
+        // フォールバック
+        return { SDL_GPU_SHADERFORMAT_SPIRV, "spv/", ".spv", "main" };
+    }
+
+    /**
      * @brief シェーダーをロードしてGPUシェーダーを作成する
      */
     SDL_GPUShader* LoadShader(SDL_GPUDevice* device, const char* filename, Uint32 samplerCount, Uint32 uniformBufferCount, SDL_GPUShaderStage stage)
     {
+        ShaderFormatInfo fmtInfo = DetectShaderFormat(device);
+
+        // baseName からフルパスを構築: ShaderPath + subDir + baseName + extension
+        std::string fullPath = std::string(ShaderPath) + fmtInfo.subDir + filename + fmtInfo.extension;
+
         Csm::csmSizeInt shaderSize;
-        Csm::csmByte* shaderCode = LAppPal::LoadFileAsBytes(filename, &shaderSize);
+        Csm::csmByte* shaderCode = LAppPal::LoadFileAsBytes(fullPath.c_str(), &shaderSize);
         if (!shaderCode)
         {
-            LAppPal::PrintLogLn("[APP]failed to load shader file: %s", filename);
+            LAppPal::PrintLogLn("[APP]failed to load shader file: %s", fullPath.c_str());
             return nullptr;
         }
 
         SDL_GPUShaderCreateInfo shaderInfo = {};
         shaderInfo.code = shaderCode;
         shaderInfo.code_size = static_cast<size_t>(shaderSize);
-        shaderInfo.entrypoint = "main";
-        shaderInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
+        shaderInfo.entrypoint = fmtInfo.entrypoint;
+        shaderInfo.format = fmtInfo.format;
         shaderInfo.stage = stage;
         shaderInfo.num_samplers = samplerCount;
         shaderInfo.num_uniform_buffers = uniformBufferCount;
@@ -60,11 +98,11 @@ namespace {
 
         if (!shader)
         {
-            LAppPal::PrintLogLn("[APP]failed to create GPU shader from: %s", filename);
+            LAppPal::PrintLogLn("[APP]failed to create GPU shader from: %s", fullPath.c_str());
         }
         else
         {
-            LAppPal::PrintLogLn("[APP]create GPU shader from: %s", filename);
+            LAppPal::PrintLogLn("[APP]create GPU shader from: %s", fullPath.c_str());
         }
         return shader;
     }
@@ -82,14 +120,12 @@ namespace {
                                                       SDL_GPUBlendFactor srcBlendFactor)
     {
         // シェーダーをロード
-        std::string shaderPath = ShaderPath;
-
         SDL_GPUShader* vertShader = LoadShader(device,
-            (shaderPath + "VertSprite.spv").c_str(),
+            "VertSprite",
             0, 0, SDL_GPU_SHADERSTAGE_VERTEX);
         // FragSprite.frag は s_texture0 と s_texture1 の2サンプラー宣言を含む
         SDL_GPUShader* fragShader = LoadShader(device,
-            (shaderPath + "FragSprite.spv").c_str(),
+            "FragSprite",
             2, 1, SDL_GPU_SHADERSTAGE_FRAGMENT);
 
         if (!vertShader || !fragShader)
