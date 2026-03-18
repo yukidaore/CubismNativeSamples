@@ -237,21 +237,22 @@ if(USE_GPU)
         # DirectXShaderCompiler は static ビルドができないため常に共有ライブラリになる。
         # shadercross の実行時に dxcompiler.dll / dxil.dll が必要なので、
         # shadercross のビルド完了後にその実行ファイルと同じディレクトリへコピーする。
-        # パスは FetchContent が設定する sdl_shadercross_BINARY_DIR と
-        # ビルド構成を表す $<CONFIG> ジェネレータ式で組み立てる。
+        #
+        # NOTE: dxil.dll は dxcompiler.dll が実行時に LoadLibrary でロードするだけで
+        #       リンク依存ではないため $<TARGET_RUNTIME_DLLS:shadercross> では捕捉できない。
+        #       代わりに DXC の CMake が作成する dxcompiler / dxil ターゲットを
+        #       $<TARGET_FILE:> で参照することで、パスを直書きせずに解決する。
         #
         # NOTE: add_custom_command(TARGET ...) は対象ターゲットが作成された
         #       ディレクトリ内でしか使えないため、shadercross(FetchContent由来)には使えない。
         #       代わりに add_custom_target + DEPENDS で同等の動作を実現する。
         if(WIN32)
-            set(_dxc_bin_dir
-                "${sdl_shadercross_BINARY_DIR}/external/DirectXShaderCompiler/$<CONFIG>/bin")
             add_custom_target(shadercross_copy_dlls
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${_dxc_bin_dir}/dxcompiler.dll"
-                    "${_dxc_bin_dir}/dxil.dll"
+                    "$<TARGET_FILE:dxcompiler>"
+                    "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll"
                     "$<TARGET_FILE_DIR:shadercross>"
-                DEPENDS shadercross
+                DEPENDS shadercross dxcompiler
                 COMMENT "Copying DirectXShaderCompiler DLLs next to shadercross"
             )
             set(SHADERCROSS_TARGET_DEPENDS "shadercross_copy_dlls")
