@@ -183,6 +183,10 @@ if(USE_GPU)
     set(FRAMEWORK_SHADER_PATH ${FRAMEWORK_PATH}/src/Rendering/SDL3_GPU/Shaders)
 
     # --- Resolve shadercross executable ---
+    # Pre-built binary version (upstream libsdl-org/SDL_shadercross commit SHA)
+    set(SHADERCROSS_VERSION "3a314481ede01f5d966f0e834019942e34c02b82" CACHE STRING
+        "Upstream SDL_shadercross commit SHA for pre-built binary")
+
     set(SHADERCROSS_FOUND FALSE)
     set(SHADERCROSS_TARGET_DEPENDS "")
     if(DEFINED ENV{SDL_SHADERCROSS_PATH})
@@ -190,73 +194,16 @@ if(USE_GPU)
         if(_SHADERCROSS_EXE)
             set(SHADERCROSS_COMMAND "${_SHADERCROSS_EXE}")
             set(SHADERCROSS_FOUND TRUE)
-            message(STATUS "Found shadercross: ${SHADERCROSS_COMMAND}")
+            message(STATUS "Found shadercross (local): ${SHADERCROSS_COMMAND}")
         endif()
     endif()
 
     if(NOT SHADERCROSS_FOUND)
-        # build own shadercross
-        message(STATUS "shadercross not found in SDL_SHADERCROSS_PATH, building from source...")
-        FetchContent_Declare(
-            sdl_shadercross
-            GIT_REPOSITORY https://github.com/libsdl-org/SDL_shadercross.git
-            GIT_TAG main
-            GIT_SHALLOW TRUE
-        )
-
-        # shadercross CLIをstaticビルド
-        set(SDLSHADERCROSS_STATIC ON CACHE BOOL "" FORCE)
-        set(SDLSHADERCROSS_SHARED OFF CACHE BOOL "" FORCE)
-        set(SDLSHADERCROSS_CLI ON CACHE BOOL "" FORCE)
-        set(SDLSHADERCROSS_VENDORED ON CACHE BOOL "" FORCE)
-        set(SDLSHADERCROSS_SPIRVCROSS_SHARED OFF CACHE BOOL "" FORCE)
-        set(SDL3_DIR "${sdl3_BINARY_DIR}" CACHE PATH "" FORCE)
-
-        # shadercrossのexternalのビルドでパスがかなり長くなり、ソースツリーを
-        # 置いたパスによっては"Filename too long" エラーが起きる可能性がある。
-        # 回避策としてGitに core.longpaths=true を強制する環境変数を一時設定 (Git 2.31+)
-        if(WIN32)
-            set(ENV{GIT_CONFIG_COUNT} "1")
-            set(ENV{GIT_CONFIG_KEY_0} "core.longpaths")
-            set(ENV{GIT_CONFIG_VALUE_0} "true")
-            # オブジェクトファイルのパス長が250文字(CMakeデフォルト制限)を超える場合の警告を抑制
-            set(CMAKE_OBJECT_PATH_MAX 500)
-        endif()
-
-        # 一時的にshadercross関連ビルドを完全にstaticになるようにさしかえ
-        set(_prev_build_shared_libs ${BUILD_SHARED_LIBS})
-        set(BUILD_SHARED_LIBS OFF)
-        FetchContent_MakeAvailable(sdl_shadercross)
-        set(BUILD_SHARED_LIBS ${_prev_build_shared_libs})
-
-        set(SHADERCROSS_COMMAND "$<TARGET_FILE:shadercross>")
-        set(SHADERCROSS_TARGET_DEPENDS "shadercross")
+        # Download pre-built shadercross binary from GitHub Releases
+        message(STATUS "Fetching pre-built shadercross binary (version: ${SHADERCROSS_VERSION})...")
+        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindShadercrossBinary.cmake)
+        set(SHADERCROSS_COMMAND "${SHADERCROSS_EXECUTABLE}")
         set(SHADERCROSS_FOUND TRUE)
-        message(STATUS "Will build shadercross from source")
-
-        # DirectXShaderCompiler は static ビルドができないため常に共有ライブラリになる。
-        # shadercross の実行時に dxcompiler.dll / dxil.dll が必要なので、
-        # shadercross のビルド完了後にその実行ファイルと同じディレクトリへコピーする。
-        #
-        # NOTE: dxil.dll は dxcompiler.dll が実行時に LoadLibrary でロードするだけで
-        #       リンク依存ではないため $<TARGET_RUNTIME_DLLS:shadercross> では捕捉できない。
-        #       代わりに DXC の CMake が作成する dxcompiler / dxil ターゲットを
-        #       $<TARGET_FILE:> で参照することで、パスを直書きせずに解決する。
-        #
-        # NOTE: add_custom_command(TARGET ...) は対象ターゲットが作成された
-        #       ディレクトリ内でしか使えないため、shadercross(FetchContent由来)には使えない。
-        #       代わりに add_custom_target + DEPENDS で同等の動作を実現する。
-        if(WIN32)
-            add_custom_target(shadercross_copy_dlls
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "$<TARGET_FILE:dxcompiler>"
-                    "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll"
-                    "$<TARGET_FILE_DIR:shadercross>"
-                DEPENDS shadercross dxcompiler
-                COMMENT "Copying DirectXShaderCompiler DLLs next to shadercross"
-            )
-            set(SHADERCROSS_TARGET_DEPENDS "shadercross_copy_dlls")
-        endif()
     endif()
 
     add_subdirectory(${SAMPLE_SHADER_PATH} ${CMAKE_CURRENT_BINARY_DIR}/SDL3SampleShaders)
