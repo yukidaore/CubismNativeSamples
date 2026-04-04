@@ -1,4 +1,4 @@
 [submodule "Framework"]
 	path = Framework
-	url = https://github.com/yukidaore/CubismNativeFramework.git
+	url = https://github.com/wamsoft/CubismNativeFramework.git
 	branch = feature/sdl3-rendering

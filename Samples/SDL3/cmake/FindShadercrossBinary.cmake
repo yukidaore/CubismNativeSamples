@@ -12,7 +12,7 @@
 #   SHADERCROSS_VERSION  - Upstream (libsdl-org/SDL_shadercross) commit SHA
 #
 # Optional variables:
-#   SHADERCROSS_GITHUB_REPO - GitHub repo for releases (default: yukidaore/SDL_shadercross)
+#   SHADERCROSS_GITHUB_REPO - GitHub repo for releases (default: wamsoft/SDL_shadercross)
 #
 # Output variables:
 #   SHADERCROSS_EXECUTABLE - Full path to the shadercross CLI binary
@@ -24,7 +24,7 @@ if(NOT DEFINED SHADERCROSS_VERSION)
 endif()
 
 if(NOT DEFINED SHADERCROSS_GITHUB_REPO)
-    set(SHADERCROSS_GITHUB_REPO "yukidaore/SDL_shadercross")
+    set(SHADERCROSS_GITHUB_REPO "wamsoft/SDL_shadercross")
 endif()
 
 # Platform detection
